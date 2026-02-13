@@ -64,12 +64,12 @@ Projet réalisé dans le cadre du projet 4PROJ.
 
 ---
 
-## 📌 Statut du projet
+## Statut du projet
 
 En cours de développement.
 
 ---
 
-## 📄 Licence
+## Licence
 
 Projet académique – usage éducatif.
