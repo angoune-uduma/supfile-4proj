@@ -57,10 +57,10 @@ Backend :
 
 Projet réalisé dans le cadre du projet 4PROJ.
 
-ANGOUNE UDUMA Idika Lionnel
-MVOU charles
-BURLURAUX jeffrey
-LONGIN zemo
+- ANGOUNE UDUMA Idika Lionnel
+- MVOU charles
+- BURLURAUX jeffrey
+- LONGIN zemo
 
 ---
 
