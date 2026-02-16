@@ -1,0 +1,211 @@
+/* src/styles/auth.css */
+:root {
+  --bg0: #050a14;
+  --bg1: #070f22;
+  --card: rgba(255, 255, 255, 0.04);
+  --card2: rgba(255, 255, 255, 0.06);
+  --stroke: rgba(120, 170, 255, 0.22);
+  --stroke2: rgba(255, 255, 255, 0.10);
+  --text: rgba(255, 255, 255, 0.92);
+  --muted: rgba(255, 255, 255, 0.62);
+  --primary: #3b82f6;
+  --primary2: #60a5fa;
+  --danger: #ef4444;
+}
+
+.supfile-auth {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(1200px 600px at 20% 10%, rgba(59,130,246,0.22), transparent 60%),
+    radial-gradient(900px 500px at 80% 30%, rgba(96,165,250,0.14), transparent 55%),
+    radial-gradient(1000px 650px at 50% 90%, rgba(59,130,246,0.10), transparent 60%),
+    linear-gradient(180deg, var(--bg0), var(--bg1));
+  color: var(--text);
+}
+
+.auth-shell {
+  width: min(980px, 100%);
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 18px;
+}
+
+@media (max-width: 900px) {
+  .auth-shell {
+    grid-template-columns: 1fr;
+  }
+}
+
+.glass {
+  background: linear-gradient(180deg, var(--card), rgba(255,255,255,0.02));
+  border: 1px solid var(--stroke2);
+  border-radius: 22px;
+  box-shadow:
+    0 0 0 1px rgba(59,130,246,0.10),
+    0 30px 80px rgba(0,0,0,0.55);
+  backdrop-filter: blur(14px);
+}
+
+.left-panel {
+  padding: 26px;
+  position: relative;
+  overflow: hidden;
+}
+
+.left-panel:before {
+  content: "";
+  position: absolute;
+  inset: -120px -160px auto auto;
+  width: 420px;
+  height: 420px;
+  background: radial-gradient(circle at 30% 30%, rgba(59,130,246,0.30), transparent 62%);
+  filter: blur(10px);
+  opacity: 0.9;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.logo {
+  width: 46px;
+  height: 46px;
+  border-radius: 16px;
+  background: radial-gradient(circle at 30% 30%, rgba(96,165,250,0.9), rgba(59,130,246,0.25));
+  box-shadow: 0 10px 30px rgba(59,130,246,0.28);
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+
+.h1 {
+  font-size: 28px;
+  font-weight: 800;
+  margin: 0;
+}
+
+.sub {
+  margin: 6px 0 0 0;
+  color: var(--muted);
+  line-height: 1.45;
+  max-width: 44ch;
+}
+
+.feature-grid {
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 520px) {
+  .feature-grid { grid-template-columns: 1fr; }
+}
+
+.feature {
+  border: 1px solid rgba(120,170,255,0.20);
+  background: rgba(255,255,255,0.03);
+  border-radius: 18px;
+  padding: 12px 12px;
+}
+
+.feature b { display: block; font-size: 13px; }
+.feature span { display: block; color: var(--muted); font-size: 12px; margin-top: 4px; }
+
+.right-panel {
+  padding: 22px;
+}
+
+.card-title {
+  font-size: 18px;
+  font-weight: 750;
+  margin: 0;
+}
+
+.card-sub {
+  margin: 8px 0 18px 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.form {
+  display: grid;
+  gap: 12px;
+}
+
+.label {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.input {
+  width: 100%;
+  padding: 12px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(120,170,255,0.22);
+  background: rgba(8, 15, 30, 0.55);
+  color: var(--text);
+  outline: none;
+}
+
+.input:focus {
+  border-color: rgba(96,165,250,0.55);
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.18);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 520px) {
+  .row { grid-template-columns: 1fr; }
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.btn {
+  border: 1px solid rgba(120,170,255,0.28);
+  background: rgba(255,255,255,0.04);
+  color: var(--text);
+  padding: 12px 14px;
+  border-radius: 14px;
+  cursor: pointer;
+  font-weight: 650;
+}
+
+.btn-primary {
+  background: linear-gradient(180deg, rgba(59,130,246,0.95), rgba(59,130,246,0.55));
+  border-color: rgba(96,165,250,0.65);
+  box-shadow: 0 12px 26px rgba(59,130,246,0.25);
+}
+
+.link {
+  color: rgba(147,197,253,0.95);
+  text-decoration: none;
+  font-size: 13px;
+}
+
+.error {
+  border: 1px solid rgba(239,68,68,0.35);
+  background: rgba(239,68,68,0.08);
+  color: rgba(255,255,255,0.92);
+  border-radius: 14px;
+  padding: 10px 12px;
+  font-size: 13px;
+}
