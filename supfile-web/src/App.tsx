@@ -7,17 +7,22 @@ import LoginPage from "./pages/auth/LoginPage";
 import RegisterPage from "./pages/auth/RegisterPage";
 import RequireAuth from "./components/auth/RequireAuth";
 
-// Placeholders (tu peux remplacer plus tard)
+type AppProps = {
+  mode: "light" | "dark";
+  toggleTheme: () => void;
+};
+
+// (Optionnel) placeholders pour éviter écran vide quand tu cliques
 function Placeholder({ title }: { title: string }) {
   return (
-    <Box sx={{ color: "rgba(255,255,255,0.75)", p: 2 }}>
+    <Box sx={{ color: "text.primary", p: 2 }}>
       <Box sx={{ fontSize: 22, fontWeight: 800, mb: 1 }}>{title}</Box>
-      <Box sx={{ opacity: 0.8 }}>Page en cours de développement.</Box>
+      <Box sx={{ color: "text.secondary" }}>Page en cours de développement.</Box>
     </Box>
   );
 }
 
-function AppLayout() {
+function AppLayout({ mode, toggleTheme }: AppProps) {
   return (
     <Box
       sx={{
@@ -28,12 +33,13 @@ function AppLayout() {
         minHeight: "100vh",
       }}
     >
-      <Sidebar />
+      <Sidebar mode={mode} toggleTheme={toggleTheme} />
+
       <Box sx={{ flex: 1, p: { xs: 2, md: 3 } }}>
         <Routes>
           <Route path="/dashboard" element={<Dashboard />} />
 
-          {/* placeholders pour la navigation */}
+          {/* placeholders */}
           <Route path="/files" element={<Placeholder title="Mes fichiers" />} />
           <Route path="/shared" element={<Placeholder title="Partagés" />} />
           <Route path="/trash" element={<Placeholder title="Corbeille" />} />
@@ -46,17 +52,17 @@ function AppLayout() {
   );
 }
 
-export default function App() {
+export default function App({ mode, toggleTheme }: AppProps) {
   const location = useLocation();
   const isAuthRoute =
     location.pathname === "/login" || location.pathname === "/register";
 
-  // Au lancement sur "/", on force la page login
+  // au lancement sur "/", on force /login
   if (location.pathname === "/") {
     return <Navigate to="/login" replace />;
   }
 
-  // Auth screens = plein écran, pas de sidebar
+  // écrans auth (plein écran)
   if (isAuthRoute) {
     return (
       <Routes>
@@ -67,14 +73,14 @@ export default function App() {
     );
   }
 
-  // App screens = layout + sidebar, protégés
+  // écrans app protégés
   return (
     <Routes>
       <Route
         path="/*"
         element={
           <RequireAuth>
-            <AppLayout />
+            <AppLayout mode={mode} toggleTheme={toggleTheme} />
           </RequireAuth>
         }
       />

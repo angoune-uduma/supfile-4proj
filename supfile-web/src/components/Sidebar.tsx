@@ -7,12 +7,16 @@ import ShareRoundedIcon from "@mui/icons-material/ShareRounded";
 import DeleteRoundedIcon from "@mui/icons-material/DeleteRounded";
 import SettingsRoundedIcon from "@mui/icons-material/SettingsRounded";
 import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
+import DarkModeRoundedIcon from "@mui/icons-material/DarkModeRounded";
+import LightModeRoundedIcon from "@mui/icons-material/LightModeRounded";
 
-// 🔵 LOGO SUPFILE
 import supfileLogo from "../assets/supfile-logo.png";
-
-// 🔐 Mock logout
 import { logoutMock } from "../services/mockAuth";
+
+type SidebarProps = {
+  mode: "light" | "dark";
+  toggleTheme: () => void;
+};
 
 const navItems = [
   { label: "Dashboard", icon: <DashboardRoundedIcon />, path: "/dashboard" },
@@ -21,7 +25,7 @@ const navItems = [
   { label: "Corbeille", icon: <DeleteRoundedIcon />, path: "/trash" },
 ];
 
-export default function Sidebar() {
+export default function Sidebar({ mode, toggleTheme }: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -36,15 +40,16 @@ export default function Sidebar() {
     <Box
       sx={{
         width: 88,
-        bgcolor: "#050814",
-        borderRight: "1px solid rgba(148,163,184,0.15)",
+        bgcolor: (theme) =>
+          theme.palette.mode === "dark" ? "#050814" : theme.palette.background.paper,
+        borderRight: (theme) => `1px solid ${theme.palette.divider}`,
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
         py: 2,
       }}
     >
-      {/* LOGO SUPFILE */}
+      {/* LOGO */}
       <Box sx={{ mb: 3 }}>
         <Box
           component="img"
@@ -64,7 +69,7 @@ export default function Sidebar() {
         />
       </Box>
 
-      {/* NAVIGATION */}
+      {/* NAV */}
       <Stack spacing={1.4} sx={{ flex: 1 }}>
         {navItems.map((item) => {
           const active = isActive(item.path);
@@ -86,7 +91,7 @@ export default function Sidebar() {
                     ? "0 0 0 1px rgba(37,99,235,0.3)"
                     : "none",
                   "&:hover": {
-                    bgcolor: "rgba(15,23,42,0.9)",
+                    bgcolor: "rgba(148,163,184,0.12)",
                     borderColor: "rgba(148,163,184,0.35)",
                   },
                 }}
@@ -109,13 +114,34 @@ export default function Sidebar() {
               borderRadius: 3,
               color: "text.secondary",
               border: "1px solid rgba(148,163,184,0.35)",
-              bgcolor: "rgba(15,23,42,0.9)",
-              "&:hover": {
-                bgcolor: "rgba(15,23,42,1)",
-              },
+              bgcolor: "rgba(148,163,184,0.10)",
+              "&:hover": { bgcolor: "rgba(148,163,184,0.14)" },
             }}
           >
             <SettingsRoundedIcon />
+          </IconButton>
+        </Tooltip>
+
+        <Tooltip
+          title={mode === "dark" ? "Passer en mode clair" : "Passer en mode sombre"}
+          placement="right"
+        >
+          <IconButton
+            onClick={toggleTheme}
+            sx={{
+              width: 42,
+              height: 42,
+              borderRadius: 3,
+              border: "1px solid rgba(148,163,184,0.35)",
+              bgcolor: "rgba(148,163,184,0.10)",
+              "&:hover": { bgcolor: "rgba(148,163,184,0.14)" },
+              color:
+                mode === "dark"
+                  ? "rgba(147,197,253,0.95)"
+                  : "rgba(30,41,59,0.75)",
+            }}
+          >
+            {mode === "dark" ? <LightModeRoundedIcon /> : <DarkModeRoundedIcon />}
           </IconButton>
         </Tooltip>
 
@@ -128,9 +154,7 @@ export default function Sidebar() {
               borderRadius: 3,
               color: "#fca5a5",
               border: "1px solid rgba(239,68,68,0.5)",
-              "&:hover": {
-                bgcolor: "rgba(248,113,113,0.16)",
-              },
+              "&:hover": { bgcolor: "rgba(248,113,113,0.16)" },
             }}
           >
             <LogoutRoundedIcon />

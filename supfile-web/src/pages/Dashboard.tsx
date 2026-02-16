@@ -36,9 +36,17 @@ const usage = {
   breakdown: [
     { label: "Vidéos", gb: 6.2, icon: <MovieRoundedIcon fontSize="small" /> },
     { label: "Images", gb: 3.1, icon: <ImageRoundedIcon fontSize="small" /> },
-    { label: "Documents", gb: 2.4, icon: <DescriptionRoundedIcon fontSize="small" /> },
+    {
+      label: "Documents",
+      gb: 2.4,
+      icon: <DescriptionRoundedIcon fontSize="small" />,
+    },
     { label: "Audio", gb: 0.5, icon: <MusicNoteRoundedIcon fontSize="small" /> },
-    { label: "Autres", gb: 0.2, icon: <InsertDriveFileRoundedIcon fontSize="small" /> },
+    {
+      label: "Autres",
+      gb: 0.2,
+      icon: <InsertDriveFileRoundedIcon fontSize="small" />,
+    },
   ],
 };
 
@@ -72,13 +80,13 @@ function UsageStackBar() {
   return (
     <Box sx={{ mt: 1.6 }}>
       <Box
-        sx={{
+        sx={(theme) => ({
           height: 12,
           borderRadius: 999,
-          border: "1px solid rgba(148,163,184,0.22)",
-          bgcolor: "rgba(15,23,42,0.55)",
+          border: `1px solid ${theme.palette.divider}`,
+          bgcolor: theme.palette.mode === "dark" ? "rgba(15,23,42,0.55)" : "rgba(2,6,23,0.06)",
           overflow: "hidden",
-        }}
+        })}
       >
         <Box
           sx={{
@@ -102,6 +110,55 @@ function UsageStackBar() {
 }
 
 export default function Dashboard() {
+  const pillSx = (theme: any) => ({
+    border: `1px solid ${theme.palette.divider}`,
+    bgcolor: theme.palette.mode === "dark" ? "rgba(15,23,42,0.60)" : "rgba(2,6,23,0.04)",
+  });
+
+  const smallPanelSx = (theme: any) => ({
+    borderRadius: 3,
+    border: `1px solid ${theme.palette.divider}`,
+    bgcolor: theme.palette.mode === "dark" ? "rgba(15,23,42,0.65)" : "rgba(255,255,255,0.65)",
+    backdropFilter: "blur(12px)",
+  });
+
+  const glassCardSx = (theme: any) => ({
+    p: 2,
+    borderRadius: 4,
+    backdropFilter: "blur(12px)",
+    border: `1px solid ${theme.palette.divider}`,
+    bgcolor: theme.palette.mode === "dark" ? "rgba(11,16,32,0.72)" : "rgba(255,255,255,0.8)",
+    boxShadow:
+      theme.palette.mode === "dark"
+        ? "0 14px 35px rgba(15,23,42,0.55)"
+        : "0 14px 35px rgba(15,23,42,0.08)",
+    minWidth: 0,
+  });
+
+  const heroSx = (theme: any) => ({
+    p: 2.4,
+    borderRadius: 4,
+    position: "relative",
+    overflow: "hidden",
+    bgcolor: theme.palette.mode === "dark" ? "rgba(11,16,32,0.75)" : "rgba(255,255,255,0.75)",
+    backdropFilter: "blur(16px)",
+    border: `1px solid ${theme.palette.divider}`,
+    boxShadow:
+      theme.palette.mode === "dark"
+        ? "0 18px 50px rgba(15,23,42,0.6)"
+        : "0 18px 45px rgba(15,23,42,0.08)",
+    "&:after": {
+      content: '""',
+      position: "absolute",
+      inset: "auto -120px -160px auto",
+      width: 280,
+      height: 280,
+      background: "radial-gradient(circle, rgba(79,124,255,0.22), transparent 60%)",
+      opacity: 0.9,
+      pointerEvents: "none",
+    },
+  });
+
   return (
     <Stack spacing={2.2}>
       {/* Header */}
@@ -130,10 +187,13 @@ export default function Dashboard() {
           <Button
             variant="contained"
             startIcon={<UploadRoundedIcon />}
-            sx={{
+            sx={(theme) => ({
               background: "linear-gradient(135deg, #2563eb, #4f46e5)",
-              boxShadow: "0 12px 25px rgba(37,99,235,0.35)",
-            }}
+              boxShadow:
+                theme.palette.mode === "dark"
+                  ? "0 12px 25px rgba(37,99,235,0.35)"
+                  : "0 12px 25px rgba(37,99,235,0.22)",
+            })}
           >
             Upload
           </Button>
@@ -142,29 +202,9 @@ export default function Dashboard() {
 
       {/* Top grid */}
       <Grid container spacing={2}>
-        {/* Hero card: Quota + breakdown */}
+        {/* Hero card */}
         <Grid item xs={12} lg={8}>
-          <Paper
-            sx={{
-              p: 2.4,
-              borderRadius: 4,
-              position: "relative",
-              overflow: "hidden",
-              background: "radial-gradient(circle at top left, #111827, #020617)",
-              borderColor: "rgba(30,64,175,0.45)",
-              boxShadow: "0 18px 50px rgba(15,23,42,0.6)",
-              "&:after": {
-                content: '""',
-                position: "absolute",
-                inset: "auto -120px -160px auto",
-                width: 280,
-                height: 280,
-                background: "radial-gradient(circle, rgba(79,124,255,0.28), transparent 60%)",
-                opacity: 0.9,
-                pointerEvents: "none",
-              },
-            }}
-          >
+          <Paper sx={heroSx}>
             <Typography variant="body2" color="text.secondary">
               Espace utilisé
             </Typography>
@@ -190,25 +230,19 @@ export default function Dashboard() {
 
               <Stack direction="row" spacing={1.1} sx={{ flexWrap: "wrap" }}>
                 {usage.breakdown.map((b) => (
-                  <Paper
-                    key={b.label}
-                    sx={{
-                      p: 1.2,
-                      borderRadius: 3,
-                      minWidth: 170,
-                      bgcolor: "rgba(15,23,42,0.72)",
-                      borderColor: "rgba(148,163,184,0.18)",
-                    }}
-                  >
+                  <Paper key={b.label} sx={(theme) => ({ p: 1.2, minWidth: 170, ...smallPanelSx(theme) })}>
                     <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                         <Avatar
-                          sx={{
+                          sx={(theme) => ({
                             width: 28,
                             height: 28,
-                            bgcolor: "rgba(79,124,255,0.12)",
+                            bgcolor:
+                              theme.palette.mode === "dark"
+                                ? "rgba(79,124,255,0.12)"
+                                : "rgba(79,124,255,0.10)",
                             color: "primary.main",
-                          }}
+                          })}
                         >
                           {b.icon}
                         </Avatar>
@@ -237,16 +271,8 @@ export default function Dashboard() {
               }}
             >
               <Stack direction="row" spacing={1}>
-                <Chip
-                  label="Quota: 30 Go"
-                  variant="outlined"
-                  sx={{ borderColor: "rgba(148,163,184,0.28)", bgcolor: "rgba(15,23,42,0.6)" }}
-                />
-                <Chip
-                  label="Sync: Activée"
-                  variant="outlined"
-                  sx={{ borderColor: "rgba(148,163,184,0.28)", bgcolor: "rgba(15,23,42,0.6)" }}
-                />
+                <Chip label="Quota: 30 Go" variant="outlined" sx={pillSx} />
+                <Chip label="Sync: Activée" variant="outlined" sx={pillSx} />
               </Stack>
 
               <Stack direction="row" spacing={1}>
@@ -276,16 +302,7 @@ export default function Dashboard() {
       <Grid container spacing={2}>
         {/* Recent files */}
         <Grid item xs={12} lg={7} sx={{ minWidth: 0 }}>
-          <Paper
-            sx={{
-              p: 2,
-              borderRadius: 4,
-              bgcolor: "rgba(11,16,32,0.72)",
-              backdropFilter: "blur(10px)",
-              boxShadow: "0 14px 35px rgba(15,23,42,0.55)",
-              minWidth: 0,
-            }}
-          >
+          <Paper sx={glassCardSx}>
             <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1 }}>
               <Box>
                 <Typography sx={{ fontWeight: 800 }}>Derniers fichiers</Typography>
@@ -331,16 +348,7 @@ export default function Dashboard() {
                       </TableCell>
 
                       <TableCell>
-                        <Chip
-                          label={f.type}
-                          size="small"
-                          variant="outlined"
-                          sx={{
-                            borderColor: "rgba(148,163,184,0.25)",
-                            bgcolor: "rgba(15,23,42,0.55)",
-                            color: "text.secondary",
-                          }}
-                        />
+                        <Chip label={f.type} size="small" variant="outlined" sx={pillSx} />
                       </TableCell>
 
                       <TableCell>{f.size}</TableCell>
@@ -353,6 +361,7 @@ export default function Dashboard() {
                             overflow: "hidden",
                             textOverflow: "ellipsis",
                             whiteSpace: "nowrap",
+                            cursor: "default",
                           }}
                         >
                           {f.modified}
@@ -368,16 +377,7 @@ export default function Dashboard() {
 
         {/* Shares */}
         <Grid item xs={12} lg={5} sx={{ minWidth: 0 }}>
-          <Paper
-            sx={{
-              p: 2,
-              borderRadius: 4,
-              bgcolor: "rgba(11,16,32,0.72)",
-              backdropFilter: "blur(10px)",
-              boxShadow: "0 14px 35px rgba(15,23,42,0.55)",
-              minWidth: 0,
-            }}
-          >
+          <Paper sx={glassCardSx}>
             <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1 }}>
               <Box>
                 <Typography sx={{ fontWeight: 800 }}>Partages</Typography>
@@ -385,28 +385,14 @@ export default function Dashboard() {
                   Liens publics et dossiers partagés récemment.
                 </Typography>
               </Box>
-              <IconButton
-                size="small"
-                sx={{
-                  border: "1px solid rgba(148,163,184,0.22)",
-                  bgcolor: "rgba(15,23,42,0.55)",
-                }}
-              >
+              <IconButton size="small" sx={pillSx}>
                 <LinkRoundedIcon fontSize="small" />
               </IconButton>
             </Box>
 
             <Stack spacing={1.1} sx={{ mt: 1.6 }}>
               {recentShares.map((s) => (
-                <Paper
-                  key={`${s.item}-${s.target}`}
-                  sx={{
-                    p: 1.4,
-                    borderRadius: 3,
-                    bgcolor: "rgba(15,23,42,0.65)",
-                    borderColor: "rgba(79,124,255,0.22)",
-                  }}
-                >
+                <Paper key={`${s.item}-${s.target}`} sx={(theme) => ({ p: 1.4, ...smallPanelSx(theme) })}>
                   <Box
                     sx={{
                       display: "grid",
