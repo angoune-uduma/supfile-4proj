@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import "../../styles/auth.css";
 
@@ -6,12 +6,10 @@ const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
 export default function LoginPage() {
   const nav = useNavigate();
-  const [email, setEmail] = useState("alexidika@gmail.com");
-  const [password, setPassword] = useState("0987654321");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-
-  const hint = useMemo(() => `Démo : alexidika@gmail.com / 0987654321`, []);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -37,11 +35,11 @@ export default function LoginPage() {
         return;
       }
 
-      // stocker tokens
+      // Stockage des tokens
       localStorage.setItem("accessToken", data.accessToken);
       localStorage.setItem("refreshToken", data.refreshToken);
 
-      // redirection dashboard
+      // Redirection dashboard
       nav("/dashboard", { replace: true });
     } catch {
       setError("Erreur serveur.");
@@ -88,11 +86,10 @@ export default function LoginPage() {
                 color: "rgba(255,255,255,0.70)",
                 fontSize: "18px",
                 lineHeight: 1.7,
-                fontWeight: 400,
               }}
             >
-              Bienvenue sur SUPFILE une plateforme moderne de stockage et de
-              partage de fichiers conçue pour offrir une expérience fluide
+              Bienvenue sur SUPFILE, une plateforme moderne de stockage et de
+              partage de fichiers conçue pour offrir une expérience fluide,
               sécurisée et intuitive.
             </p>
           </div>
@@ -102,8 +99,7 @@ export default function LoginPage() {
         <section className="glass right-panel">
           <h2 className="card-title">Connexion</h2>
           <p className="card-sub">
-            Connecte-toi pour accéder à ton espace. <br />
-            <span style={{ color: "rgba(255,255,255,0.55)" }}>{hint}</span>
+            Connecte-toi pour accéder à ton espace.
           </p>
 
           {error && <div className="error">{error}</div>}
@@ -116,7 +112,7 @@ export default function LoginPage() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="ex: alexidika@gmail.com"
+                placeholder="ex: email@supfile.com"
                 required
                 autoComplete="email"
               />
@@ -129,7 +125,7 @@ export default function LoginPage() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••••"
+                placeholder="••••••••"
                 required
                 autoComplete="current-password"
               />
@@ -140,21 +136,14 @@ export default function LoginPage() {
                 Créer un compte
               </Link>
 
-              <button className="btn btn-primary" type="submit" disabled={loading}>
+              <button
+                className="btn btn-primary"
+                type="submit"
+                disabled={loading}
+              >
                 {loading ? "Connexion..." : "Se connecter"}
               </button>
             </div>
-
-            <button
-              className="btn"
-              type="button"
-              onClick={() => {
-                setEmail("alexidika@gmail.com");
-                setPassword("0987654321");
-              }}
-            >
-              Remplir identifiants démo
-            </button>
           </form>
         </section>
       </div>

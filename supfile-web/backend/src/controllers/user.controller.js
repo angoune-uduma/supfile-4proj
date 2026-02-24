@@ -1,13 +1,15 @@
+// backend/src/controllers/user.controller.js
 const bcrypt = require("bcrypt");
 const User = require("../models/User");
 
 /**
  * GET /user/me
  * Retourne l'utilisateur connecté
+ * (req.user est injecté par auth.middleware)
  */
 exports.me = async (req, res) => {
   try {
-    const user = await User.findById(req.userId).select(
+    const user = await User.findById(req.user._id).select(
       "email avatarUrl avatarMeta createdAt"
     );
 
@@ -20,6 +22,7 @@ exports.me = async (req, res) => {
       email: user.email,
       avatarUrl: user.avatarUrl || null,
       avatarMeta: user.avatarMeta || null,
+      createdAt: user.createdAt,
     });
   } catch (err) {
     return res.status(500).json({ error: "SERVER_ERROR" });
@@ -34,7 +37,7 @@ exports.updateMe = async (req, res) => {
   try {
     const { email, avatarUrl, avatarMeta } = req.body;
 
-    const user = await User.findById(req.userId);
+    const user = await User.findById(req.user._id);
     if (!user) {
       return res.status(404).json({ error: "USER_NOT_FOUND" });
     }
@@ -45,20 +48,29 @@ exports.updateMe = async (req, res) => {
 
     await user.save();
 
-    return res.json({ ok: true });
+    return res.json({
+      ok: true,
+      user: {
+        id: user._id,
+        email: user.email,
+        avatarUrl: user.avatarUrl || null,
+        avatarMeta: user.avatarMeta || null,
+      },
+    });
   } catch (err) {
     return res.status(500).json({ error: "SERVER_ERROR" });
   }
 };
 
 /**
- * POST /user/change-password
+ * PATCH /user/me/password
+ * Changer mot de passe (compte local)
  */
 exports.changePassword = async (req, res) => {
   try {
     const { oldPassword, newPassword } = req.body;
 
-    const user = await User.findById(req.userId);
+    const user = await User.findById(req.user._id);
     if (!user || !user.passwordHash) {
       return res.status(400).json({ error: "OAUTH_ACCOUNT_NO_PASSWORD" });
     }

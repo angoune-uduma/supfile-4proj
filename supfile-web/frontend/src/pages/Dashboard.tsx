@@ -224,16 +224,6 @@ export default function Dashboard() {
           >
             Upload
           </Button>
-
-          <Button
-            variant="text"
-            onClick={() => {
-              clearTokens();
-              nav("/login", { replace: true });
-            }}
-          >
-            Déconnexion
-          </Button>
         </Stack>
       </Box>
 
