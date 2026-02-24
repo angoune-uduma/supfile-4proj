@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import "../../styles/auth.css";
-import { loginMock } from "../../services/mockAuth";
+
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
 export default function LoginPage() {
   const nav = useNavigate();
@@ -10,10 +11,7 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const hint = useMemo(
-    () => `Démo (mock) : alexidika@gmail.com / 0987654321`,
-    []
-  );
+  const hint = useMemo(() => `Démo : alexidika@gmail.com / 0987654321`, []);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -21,11 +19,32 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      await new Promise((r) => setTimeout(r, 450));
-      loginMock(email, password);
-      nav("/dashboard");
-    } catch (err: any) {
-      setError(err?.message ?? "Erreur de connexion.");
+      const res = await fetch(`${API_URL}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        setError(data?.error || "Erreur de connexion.");
+        return;
+      }
+
+      if (!data?.accessToken || !data?.refreshToken) {
+        setError("Tokens manquants dans la réponse du serveur.");
+        return;
+      }
+
+      // stocker tokens
+      localStorage.setItem("accessToken", data.accessToken);
+      localStorage.setItem("refreshToken", data.refreshToken);
+
+      // redirection dashboard
+      nav("/dashboard", { replace: true });
+    } catch {
+      setError("Erreur serveur.");
     } finally {
       setLoading(false);
     }

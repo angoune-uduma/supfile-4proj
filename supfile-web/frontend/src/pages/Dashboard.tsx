@@ -1,8 +1,11 @@
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { apiFetch, clearTokens } from "../services/api";
+
 import {
   Box,
   Button,
   Chip,
-  Grid,
   Paper,
   Stack,
   Typography,
@@ -31,22 +34,15 @@ import StatCard from "../components/StatCard";
 
 // ---- Mock data (plus tard: API)
 const QUOTA_GB = 30;
+
 const usage = {
   used: 12.4, // Go
   breakdown: [
     { label: "Vidéos", gb: 6.2, icon: <MovieRoundedIcon fontSize="small" /> },
     { label: "Images", gb: 3.1, icon: <ImageRoundedIcon fontSize="small" /> },
-    {
-      label: "Documents",
-      gb: 2.4,
-      icon: <DescriptionRoundedIcon fontSize="small" />,
-    },
+    { label: "Documents", gb: 2.4, icon: <DescriptionRoundedIcon fontSize="small" /> },
     { label: "Audio", gb: 0.5, icon: <MusicNoteRoundedIcon fontSize="small" /> },
-    {
-      label: "Autres",
-      gb: 0.2,
-      icon: <InsertDriveFileRoundedIcon fontSize="small" />,
-    },
+    { label: "Autres", gb: 0.2, icon: <InsertDriveFileRoundedIcon fontSize="small" /> },
   ],
 };
 
@@ -110,6 +106,28 @@ function UsageStackBar() {
 }
 
 export default function Dashboard() {
+  const nav = useNavigate();
+  const [me, setMe] = useState<{ email: string; avatarUrl?: string | null } | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      const { res, data } = await apiFetch("/user/me", { method: "GET" });
+
+      if (!res.ok) {
+        if (res.status === 401) {
+          clearTokens();
+          nav("/login", { replace: true });
+          return;
+        }
+        setErr(data?.error || "Impossible de récupérer le profil.");
+        return;
+      }
+
+      setMe(data);
+    })();
+  }, [nav]);
+
   const pillSx = (theme: any) => ({
     border: `1px solid ${theme.palette.divider}`,
     bgcolor: theme.palette.mode === "dark" ? "rgba(15,23,42,0.60)" : "rgba(2,6,23,0.04)",
@@ -178,12 +196,21 @@ export default function Dashboard() {
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.3 }}>
             Vue rapide de votre espace de stockage et de l’activité récente.
           </Typography>
+
+          {err && (
+            <Typography variant="body2" sx={{ mt: 0.8, color: "error.main" }}>
+              {err}
+            </Typography>
+          )}
         </Box>
 
-        <Stack direction="row" spacing={1}>
+        <Stack direction="row" spacing={1} alignItems="center">
+          {me && <Chip label={me.email} variant="outlined" sx={pillSx} />}
+
           <Button variant="outlined" startIcon={<SearchRoundedIcon />}>
             Rechercher
           </Button>
+
           <Button
             variant="contained"
             startIcon={<UploadRoundedIcon />}
@@ -197,13 +224,30 @@ export default function Dashboard() {
           >
             Upload
           </Button>
+
+          <Button
+            variant="text"
+            onClick={() => {
+              clearTokens();
+              nav("/login", { replace: true });
+            }}
+          >
+            Déconnexion
+          </Button>
         </Stack>
       </Box>
 
-      {/* Top grid */}
-      <Grid container spacing={2}>
+      {/* Top layout (CSS Grid) */}
+      <Box
+        sx={{
+          display: "grid",
+          gridTemplateColumns: { xs: "1fr", lg: "2fr 1fr" },
+          gap: 2,
+          alignItems: "start",
+        }}
+      >
         {/* Hero card */}
-        <Grid item xs={12} lg={8}>
+        <Box>
           <Paper sx={heroSx}>
             <Typography variant="body2" color="text.secondary">
               Espace utilisé
@@ -222,7 +266,6 @@ export default function Dashboard() {
 
             <UsageStackBar />
 
-            {/* Breakdown */}
             <Box sx={{ mt: 2.2, position: "relative", zIndex: 1 }}>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                 Répartition
@@ -257,7 +300,6 @@ export default function Dashboard() {
               </Stack>
             </Box>
 
-            {/* quick actions */}
             <Box
               sx={{
                 display: "flex",
@@ -285,23 +327,30 @@ export default function Dashboard() {
               </Stack>
             </Box>
           </Paper>
-        </Grid>
+        </Box>
 
         {/* Right metrics */}
-        <Grid item xs={12} lg={4}>
+        <Box>
           <Stack spacing={1.2}>
             <StatCard title="Stockage libre" value={formatGb(QUOTA_GB - usage.used)} pill="Sur 30 Go" />
             <StatCard title="Fichiers récents" value="5" pill="Dernières modifications" />
             <StatCard title="Liens de partage actifs" value="3" />
             <StatCard title="Corbeille" value="0 élément" />
           </Stack>
-        </Grid>
-      </Grid>
+        </Box>
+      </Box>
 
-      {/* Bottom panels */}
-      <Grid container spacing={2}>
+      {/* Bottom layout (CSS Grid) */}
+      <Box
+        sx={{
+          display: "grid",
+          gridTemplateColumns: { xs: "1fr", lg: "7fr 5fr" },
+          gap: 2,
+          alignItems: "start",
+        }}
+      >
         {/* Recent files */}
-        <Grid item xs={12} lg={7} sx={{ minWidth: 0 }}>
+        <Box sx={{ minWidth: 0 }}>
           <Paper sx={glassCardSx}>
             <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1 }}>
               <Box>
@@ -373,10 +422,10 @@ export default function Dashboard() {
               </Table>
             </Box>
           </Paper>
-        </Grid>
+        </Box>
 
         {/* Shares */}
-        <Grid item xs={12} lg={5} sx={{ minWidth: 0 }}>
+        <Box sx={{ minWidth: 0 }}>
           <Paper sx={glassCardSx}>
             <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1 }}>
               <Box>
@@ -454,8 +503,8 @@ export default function Dashboard() {
               ))}
             </Stack>
           </Paper>
-        </Grid>
-      </Grid>
+        </Box>
+      </Box>
     </Stack>
   );
 }

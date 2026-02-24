@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import "../../styles/auth.css";
-import { registerMock } from "../../services/mockAuth";
+
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
 export default function RegisterPage() {
   const nav = useNavigate();
@@ -28,14 +29,32 @@ export default function RegisterPage() {
     }
 
     setLoading(true);
-    try {
-      await new Promise((r) => setTimeout(r, 450)); // simulation latence
-      registerMock(email, password);
 
-      setOk("Compte simulé créé. Tu peux maintenant te connecter.");
-      setTimeout(() => nav("/login"), 800);
-    } catch (err: any) {
-      setError(err?.message ?? "Erreur d'inscription.");
+    try {
+      const res = await fetch(`${API_URL}/auth/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        // erreurs backend possibles (selon ton backend)
+        if (data?.error === "EMAIL_ALREADY_USED") {
+          setError("Cet email est déjà utilisé.");
+        } else if (data?.error === "VALIDATION_ERROR") {
+          setError("Veuillez vérifier les champs (email/mot de passe).");
+        } else {
+          setError(data?.error || "Erreur d'inscription.");
+        }
+        return;
+      }
+
+      setOk("Compte créé. Tu peux maintenant te connecter.");
+      setTimeout(() => nav("/login", { replace: true }), 800);
+    } catch {
+      setError("Erreur serveur.");
     } finally {
       setLoading(false);
     }
@@ -152,20 +171,12 @@ export default function RegisterPage() {
                 Déjà un compte ? Se connecter
               </Link>
 
-              <button
-                className="btn btn-primary"
-                type="submit"
-                disabled={loading}
-              >
+              <button className="btn btn-primary" type="submit" disabled={loading}>
                 {loading ? "Création..." : "Créer le compte"}
               </button>
             </div>
 
-            <button
-              className="btn"
-              type="button"
-              onClick={() => nav("/login")}
-            >
+            <button className="btn" type="button" onClick={() => nav("/login")}>
               Retour connexion
             </button>
           </form>

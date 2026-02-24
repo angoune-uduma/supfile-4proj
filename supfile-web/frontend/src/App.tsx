@@ -1,10 +1,13 @@
-import { Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import { Box } from "@mui/material";
 
 import Sidebar from "./components/Sidebar";
 import Dashboard from "./pages/Dashboard";
 import LoginPage from "./pages/auth/LoginPage";
 import RegisterPage from "./pages/auth/RegisterPage";
+
+import AuthSuccess from "./pages/auth/AuthSuccess";
+
 import RequireAuth from "./components/auth/RequireAuth";
 
 type AppProps = {
@@ -53,29 +56,19 @@ function AppLayout({ mode, toggleTheme }: AppProps) {
 }
 
 export default function App({ mode, toggleTheme }: AppProps) {
-  const location = useLocation();
-  const isAuthRoute =
-    location.pathname === "/login" || location.pathname === "/register";
-
-  // au lancement sur "/", on force /login
-  if (location.pathname === "/") {
-    return <Navigate to="/login" replace />;
-  }
-
-  // écrans auth (plein écran)
-  if (isAuthRoute) {
-    return (
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
-        <Route path="*" element={<Navigate to="/login" replace />} />
-      </Routes>
-    );
-  }
-
-  // écrans app protégés
   return (
     <Routes>
+      {/* redirection racine */}
+      <Route path="/" element={<Navigate to="/login" replace />} />
+
+      {/* routes publiques */}
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterPage />} />
+
+      {/* IMPORTANT : oauth success doit être PUBLIC */}
+      <Route path="/oauth/success" element={<AuthSuccess />} />
+
+      {/* routes protégées (toute l'app) */}
       <Route
         path="/*"
         element={
@@ -84,6 +77,9 @@ export default function App({ mode, toggleTheme }: AppProps) {
           </RequireAuth>
         }
       />
+
+      {/* fallback */}
+      <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   );
 }

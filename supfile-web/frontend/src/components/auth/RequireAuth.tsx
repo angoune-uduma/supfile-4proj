@@ -1,8 +1,12 @@
 import { Navigate } from "react-router-dom";
-import { getSessionMock } from "../../services/mockAuth";
+import { getAccessToken } from "../../services/api";
 
-export default function RequireAuth({ children }: { children: React.ReactNode }) {
-  const session = getSessionMock();
-  if (!session) return <Navigate to="/login" replace />;
-  return <>{children}</>;
+export default function RequireAuth({ children }: any) {
+  const token = getAccessToken();
+
+  if (!token) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return children;
 }
