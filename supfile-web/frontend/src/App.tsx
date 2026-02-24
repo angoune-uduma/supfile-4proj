@@ -1,11 +1,12 @@
+// src/App.tsx
 import { Routes, Route, Navigate } from "react-router-dom";
 import { Box } from "@mui/material";
 
 import Sidebar from "./components/Sidebar";
 import Dashboard from "./pages/Dashboard";
+import ProfilePage from "./pages/ProfilePage";
 import LoginPage from "./pages/auth/LoginPage";
 import RegisterPage from "./pages/auth/RegisterPage";
-
 import AuthSuccess from "./pages/auth/AuthSuccess";
 
 import RequireAuth from "./components/auth/RequireAuth";
@@ -15,7 +16,7 @@ type AppProps = {
   toggleTheme: () => void;
 };
 
-// (Optionnel) placeholders pour éviter écran vide quand tu cliques
+// Placeholders pour éviter écran vide quand tu cliques
 function Placeholder({ title }: { title: string }) {
   return (
     <Box sx={{ color: "text.primary", p: 2 }}>
@@ -42,12 +43,16 @@ function AppLayout({ mode, toggleTheme }: AppProps) {
         <Routes>
           <Route path="/dashboard" element={<Dashboard />} />
 
+          {/* ✅ nouvelle page profil */}
+          <Route path="/profile" element={<ProfilePage />} />
+
           {/* placeholders */}
           <Route path="/files" element={<Placeholder title="Mes fichiers" />} />
           <Route path="/shared" element={<Placeholder title="Partagés" />} />
           <Route path="/trash" element={<Placeholder title="Corbeille" />} />
           <Route path="/settings" element={<Placeholder title="Paramètres" />} />
 
+          {/* fallback dans l'app */}
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </Box>
@@ -58,17 +63,17 @@ function AppLayout({ mode, toggleTheme }: AppProps) {
 export default function App({ mode, toggleTheme }: AppProps) {
   return (
     <Routes>
-      {/* redirection racine */}
+      {/* racine */}
       <Route path="/" element={<Navigate to="/login" replace />} />
 
       {/* routes publiques */}
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
 
-      {/* IMPORTANT : oauth success doit être PUBLIC */}
+      {/* oauth success PUBLIC */}
       <Route path="/oauth/success" element={<AuthSuccess />} />
 
-      {/* routes protégées (toute l'app) */}
+      {/* routes protégées */}
       <Route
         path="/*"
         element={
@@ -78,7 +83,7 @@ export default function App({ mode, toggleTheme }: AppProps) {
         }
       />
 
-      {/* fallback */}
+      {/* fallback global */}
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   );

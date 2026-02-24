@@ -1,5 +1,16 @@
-import { Box, Stack, IconButton, Tooltip } from "@mui/material";
+import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import {
+  Box,
+  Stack,
+  IconButton,
+  Tooltip,
+  Avatar,
+  Menu,
+  MenuItem,
+  Divider,
+  ListItemIcon,
+} from "@mui/material";
 
 import DashboardRoundedIcon from "@mui/icons-material/DashboardRounded";
 import FolderRoundedIcon from "@mui/icons-material/FolderRounded";
@@ -9,9 +20,10 @@ import SettingsRoundedIcon from "@mui/icons-material/SettingsRounded";
 import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
 import DarkModeRoundedIcon from "@mui/icons-material/DarkModeRounded";
 import LightModeRoundedIcon from "@mui/icons-material/LightModeRounded";
+import PersonRoundedIcon from "@mui/icons-material/PersonRounded";
 
 import supfileLogo from "../assets/supfile-logo.png";
-import { logoutMock } from "../services/mockAuth";
+import { apiFetch, clearTokens } from "../services/api";
 
 type SidebarProps = {
   mode: "light" | "dark";
@@ -29,10 +41,27 @@ export default function Sidebar({ mode, toggleTheme }: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
 
+  const [me, setMe] = useState<{ email: string; avatarUrl?: string | null } | null>(
+    null
+  );
+
+  // menu profil
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const menuOpen = Boolean(anchorEl);
+
   const isActive = (path: string) => location.pathname === path;
 
+  // Fetch profil (email/avatar) pour afficher l'avatar
+  useEffect(() => {
+    (async () => {
+      const { res, data } = await apiFetch("/user/me", { method: "GET" });
+      if (res.ok) setMe(data);
+      // si 401, on laisse RequireAuth gérer (ou tu peux clearTokens + redirect ici si tu veux)
+    })();
+  }, []);
+
   const handleLogout = () => {
-    logoutMock();
+    clearTokens();
     navigate("/login", { replace: true });
   };
 
@@ -49,24 +78,98 @@ export default function Sidebar({ mode, toggleTheme }: SidebarProps) {
         py: 2,
       }}
     >
-      {/* LOGO */}
+      {/* PROFILE / LOGO BUTTON */}
       <Box sx={{ mb: 3 }}>
-        <Box
-          component="img"
-          src={supfileLogo}
-          alt="SUPFile"
-          sx={{
-            width: 48,
-            height: 48,
-            borderRadius: "50%",
-            objectFit: "contain",
-            p: 0.8,
-            background: "radial-gradient(circle at 30% 0, #38bdf8, #1d4ed8)",
-            filter: "drop-shadow(0 0 18px rgba(59,130,246,0.75))",
-            cursor: "pointer",
+        <Tooltip title={me?.email ? `Profil (${me.email})` : "Profil"} placement="right">
+          <IconButton
+            onClick={(e) => setAnchorEl(e.currentTarget)}
+            sx={{
+              p: 0,
+              borderRadius: "50%",
+              width: 54,
+              height: 54,
+              background: "radial-gradient(circle at 30% 0, #38bdf8, #1d4ed8)",
+              boxShadow: "0 0 18px rgba(59,130,246,0.55)",
+              "&:hover": {
+                boxShadow: "0 0 22px rgba(59,130,246,0.75)",
+              },
+            }}
+          >
+            <Avatar
+              src={me?.avatarUrl || supfileLogo}
+              alt="Profil"
+              sx={{
+                width: 48,
+                height: 48,
+                bgcolor: "rgba(2,6,23,0.25)",
+              }}
+              imgProps={{
+                style: { objectFit: "contain" },
+              }}
+            />
+          </IconButton>
+        </Tooltip>
+
+        {/* MENU PROFIL */}
+        <Menu
+          anchorEl={anchorEl}
+          open={menuOpen}
+          onClose={() => setAnchorEl(null)}
+          anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+          transformOrigin={{ vertical: "top", horizontal: "right" }}
+          PaperProps={{
+            sx: (theme) => ({
+              mt: 1,
+              minWidth: 220,
+              borderRadius: 3,
+              border: `1px solid ${theme.palette.divider}`,
+              bgcolor:
+                theme.palette.mode === "dark"
+                  ? "rgba(11,16,32,0.92)"
+                  : "rgba(255,255,255,0.92)",
+              backdropFilter: "blur(12px)",
+            }),
           }}
-          onClick={() => navigate("/dashboard")}
-        />
+        >
+          <MenuItem
+            onClick={() => {
+              setAnchorEl(null);
+              navigate("/profile"); // ✅ tu peux remplacer par "/settings" si vous n’avez pas /profile
+            }}
+          >
+            <ListItemIcon>
+              <PersonRoundedIcon fontSize="small" />
+            </ListItemIcon>
+            Mon profil
+          </MenuItem>
+
+          <MenuItem
+            onClick={() => {
+              setAnchorEl(null);
+              navigate("/settings");
+            }}
+          >
+            <ListItemIcon>
+              <SettingsRoundedIcon fontSize="small" />
+            </ListItemIcon>
+            Paramètres
+          </MenuItem>
+
+          <Divider />
+
+          <MenuItem
+            onClick={() => {
+              setAnchorEl(null);
+              handleLogout();
+            }}
+            sx={{ color: "#fca5a5" }}
+          >
+            <ListItemIcon sx={{ color: "#fca5a5" }}>
+              <LogoutRoundedIcon fontSize="small" />
+            </ListItemIcon>
+            Déconnexion
+          </MenuItem>
+        </Menu>
       </Box>
 
       {/* NAV */}
@@ -145,6 +248,7 @@ export default function Sidebar({ mode, toggleTheme }: SidebarProps) {
           </IconButton>
         </Tooltip>
 
+        {/* Gardé : bouton logout bas (si tu veux le garder) */}
         <Tooltip title="Déconnexion" placement="right">
           <IconButton
             onClick={handleLogout}
