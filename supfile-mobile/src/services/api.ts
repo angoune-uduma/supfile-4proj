@@ -1,13 +1,9 @@
 import axios from "axios";
-import { Platform } from "react-native";
-import { getAccessToken } from "./auth";
+import { getAccessToken } from "./secureStore"; // <-- IMPORTANT
 
-const DEFAULT_BASE =
-  Platform.OS === "android"
-    ? "http://10.0.2.2:8080/api"
-    : "http://localhost:8080/api";
-
-const API_URL = process.env.EXPO_PUBLIC_API_URL || DEFAULT_BASE;
+const API_URL =
+  process.env.EXPO_PUBLIC_API_URL ||
+  "http://192.168.1.163:4000"; // <-- ton IP Mac
 
 export const api = axios.create({
   baseURL: API_URL,
