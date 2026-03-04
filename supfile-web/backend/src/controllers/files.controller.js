@@ -86,7 +86,7 @@ exports.list = async (req, res) => {
 
     const items = await FileItem.find(query)
       .sort({ updatedAt: -1 })
-      .select("_id originalName mimeType size parentId createdAt updatedAt");
+      .select("_id type originalName mimeType size parentId createdAt updatedAt");
 
     return res.json({
       ok: true,
@@ -95,6 +95,7 @@ exports.list = async (req, res) => {
         id: d._id,
         originalName: d.originalName,
         mimeType: d.mimeType,
+        type: d.type,
         size: d.size,
         parentId: d.parentId,
         createdAt: d.createdAt,
@@ -116,6 +117,9 @@ exports.download = async (req, res) => {
     });
 
     if (!fileDoc) return res.status(404).json({ error: "NOT_FOUND" });
+    if (fileDoc.type !== "file") {
+      return res.status(400).json({ error: "NOT_A_FILE" });
+    }
 
     const absPath = path.join(getStorageBaseDir(), ...fileDoc.storageRelPath.split("/"));
 
@@ -145,6 +149,9 @@ exports.preview = async (req, res) => {
     });
 
     if (!fileDoc) return res.status(404).json({ error: "NOT_FOUND" });
+    if (fileDoc.type !== "file") {
+      return res.status(400).json({ error: "NOT_A_FILE" });
+    }
 
     const absPath = path.join(getStorageBaseDir(), ...fileDoc.storageRelPath.split("/"));
 
@@ -162,7 +169,7 @@ exports.preview = async (req, res) => {
       `inline; filename="${encodeURIComponent(fileDoc.originalName)}"`
     );
 
-    // ✅ Range support for audio/video
+    //  Range support for audio/video
     const range = req.headers.range;
     if (range) {
       const match = range.match(/bytes=(\d+)-(\d*)/);
@@ -181,7 +188,7 @@ exports.preview = async (req, res) => {
       return fs.createReadStream(absPath, { start, end }).pipe(res);
     }
 
-    // ✅ No range: normal stream
+    //  No range: normal stream
     res.setHeader("Content-Length", fileSize);
     return fs.createReadStream(absPath).pipe(res);
   } catch (err) {
@@ -198,7 +205,7 @@ exports.trash = async (req, res) => {
       deletedAt: { $ne: null },
     })
       .sort({ deletedAt: -1 })
-      .select("_id originalName mimeType size parentId deletedAt createdAt updatedAt");
+      .select("_id type originalName mimeType size parentId deletedAt createdAt updatedAt");
 
     return res.json({
       ok: true,
@@ -207,6 +214,7 @@ exports.trash = async (req, res) => {
         originalName: d.originalName,
         mimeType: d.mimeType,
         size: d.size,
+        type: d.type,
         parentId: d.parentId,
         deletedAt: d.deletedAt,
         createdAt: d.createdAt,
@@ -251,5 +259,35 @@ exports.restore = async (req, res) => {
     return res.json({ ok: true });
   } catch (err) {
     return res.status(500).json({ error: "RESTORE_FAILED", message: err.message });
+  }
+};
+
+exports.createFolder = async (req, res) => {
+  try {
+    if (!req.user?._id) return res.status(401).json({ error: "UNAUTHORIZED" });
+
+    const name = (req.body.name || "").trim();
+    const parentId = req.body.parentId || null;
+
+    if (!name) return res.status(400).json({ error: "FOLDER_NAME_REQUIRED" });
+
+    const folder = await FileItem.create({
+      ownerId: req.user._id,
+      type: "folder",
+      originalName: name,
+      parentId,
+    });
+
+    return res.status(201).json({
+      ok: true,
+      folder: {
+        id: folder._id,
+        name: folder.originalName,
+        parentId: folder.parentId,
+        createdAt: folder.createdAt,
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ error: "CREATE_FOLDER_FAILED", message: err.message });
   }
 };
