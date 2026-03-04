@@ -105,3 +105,151 @@ exports.list = async (req, res) => {
     return res.status(500).json({ error: "LIST_FAILED", message: err.message });
   }
 };
+exports.download = async (req, res) => {
+  try {
+    if (!req.user?._id) return res.status(401).json({ error: "UNAUTHORIZED" });
+
+    const fileDoc = await FileItem.findOne({
+      _id: req.params.id,
+      ownerId: req.user._id,
+      deletedAt: null,
+    });
+
+    if (!fileDoc) return res.status(404).json({ error: "NOT_FOUND" });
+
+    const absPath = path.join(getStorageBaseDir(), ...fileDoc.storageRelPath.split("/"));
+
+    if (!fs.existsSync(absPath)) {
+      return res.status(404).json({ error: "FILE_MISSING_ON_DISK" });
+    }
+
+    res.setHeader("Content-Type", fileDoc.mimeType);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${encodeURIComponent(fileDoc.originalName)}"`
+    );
+
+    return fs.createReadStream(absPath).pipe(res);
+  } catch (err) {
+    return res.status(500).json({ error: "DOWNLOAD_FAILED", message: err.message });
+  }
+};
+exports.preview = async (req, res) => {
+  try {
+    if (!req.user?._id) return res.status(401).json({ error: "UNAUTHORIZED" });
+
+    const fileDoc = await FileItem.findOne({
+      _id: req.params.id,
+      ownerId: req.user._id,
+      deletedAt: null,
+    });
+
+    if (!fileDoc) return res.status(404).json({ error: "NOT_FOUND" });
+
+    const absPath = path.join(getStorageBaseDir(), ...fileDoc.storageRelPath.split("/"));
+
+    if (!fs.existsSync(absPath)) {
+      return res.status(404).json({ error: "FILE_MISSING_ON_DISK" });
+    }
+
+    const stat = await fs.promises.stat(absPath);
+    const fileSize = stat.size;
+
+    const mime = fileDoc.mimeType || "application/octet-stream";
+    res.setHeader("Content-Type", mime);
+    res.setHeader(
+      "Content-Disposition",
+      `inline; filename="${encodeURIComponent(fileDoc.originalName)}"`
+    );
+
+    // ✅ Range support for audio/video
+    const range = req.headers.range;
+    if (range) {
+      const match = range.match(/bytes=(\d+)-(\d*)/);
+      if (!match) return res.status(416).end();
+
+      const start = parseInt(match[1], 10);
+      const end = match[2] ? parseInt(match[2], 10) : fileSize - 1;
+
+      if (start >= fileSize || end >= fileSize) return res.status(416).end();
+
+      res.status(206);
+      res.setHeader("Accept-Ranges", "bytes");
+      res.setHeader("Content-Range", `bytes ${start}-${end}/${fileSize}`);
+      res.setHeader("Content-Length", end - start + 1);
+
+      return fs.createReadStream(absPath, { start, end }).pipe(res);
+    }
+
+    // ✅ No range: normal stream
+    res.setHeader("Content-Length", fileSize);
+    return fs.createReadStream(absPath).pipe(res);
+  } catch (err) {
+    return res.status(500).json({ error: "PREVIEW_FAILED", message: err.message });
+  }
+};
+
+exports.trash = async (req, res) => {
+  try {
+    if (!req.user?._id) return res.status(401).json({ error: "UNAUTHORIZED" });
+
+    const items = await FileItem.find({
+      ownerId: req.user._id,
+      deletedAt: { $ne: null },
+    })
+      .sort({ deletedAt: -1 })
+      .select("_id originalName mimeType size parentId deletedAt createdAt updatedAt");
+
+    return res.json({
+      ok: true,
+      items: items.map((d) => ({
+        id: d._id,
+        originalName: d.originalName,
+        mimeType: d.mimeType,
+        size: d.size,
+        parentId: d.parentId,
+        deletedAt: d.deletedAt,
+        createdAt: d.createdAt,
+        updatedAt: d.updatedAt,
+      })),
+    });
+  } catch (err) {
+    return res.status(500).json({ error: "TRASH_LIST_FAILED", message: err.message });
+  }
+};
+
+exports.remove = async (req, res) => {
+  try {
+    if (!req.user?._id) return res.status(401).json({ error: "UNAUTHORIZED" });
+
+    const doc = await FileItem.findOneAndUpdate(
+      { _id: req.params.id, ownerId: req.user._id, deletedAt: null },
+      { deletedAt: new Date() },
+      { new: true }
+    );
+
+    if (!doc) return res.status(404).json({ error: "NOT_FOUND" });
+
+    return res.json({ ok: true });
+  } catch (err) {
+    return res.status(500).json({ error: "DELETE_FAILED", message: err.message });
+  }
+};
+
+exports.restore = async (req, res) => {
+  try {
+    if (!req.user?._id) return res.status(401).json({ error: "UNAUTHORIZED" });
+
+    const doc = await FileItem.findOneAndUpdate(
+      { _id: req.params.id, ownerId: req.user._id, deletedAt: { $ne: null } },
+      { deletedAt: null },
+      { new: true }
+    );
+
+    if (!doc) return res.status(404).json({ error: "NOT_FOUND" });
+
+    return res.json({ ok: true });
+  } catch (err) {
+    return res.status(500).json({ error: "RESTORE_FAILED", message: err.message });
+  }
+};
