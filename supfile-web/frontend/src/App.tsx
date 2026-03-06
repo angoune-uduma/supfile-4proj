@@ -8,6 +8,7 @@ import ProfilePage from "./pages/ProfilePage";
 import LoginPage from "./pages/auth/LoginPage";
 import RegisterPage from "./pages/auth/RegisterPage";
 import AuthSuccess from "./pages/auth/AuthSuccess";
+import FilesPage from "./pages/FilesPage";
 
 import RequireAuth from "./components/auth/RequireAuth";
 
@@ -47,10 +48,11 @@ function AppLayout({ mode, toggleTheme }: AppProps) {
           <Route path="/profile" element={<ProfilePage />} />
 
           {/* placeholders */}
-          <Route path="/files" element={<Placeholder title="Mes fichiers" />} />
+          
           <Route path="/shared" element={<Placeholder title="Partagés" />} />
           <Route path="/trash" element={<Placeholder title="Corbeille" />} />
           <Route path="/settings" element={<Placeholder title="Paramètres" />} />
+          <Route path="/files" element={<FilesPage />} />
 
           {/* fallback dans l'app */}
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
