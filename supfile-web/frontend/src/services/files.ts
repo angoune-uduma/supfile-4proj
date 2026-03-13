@@ -1,4 +1,7 @@
-import { apiFetch } from "./api";
+//frontend/src/services/files.ts
+import { apiFetch, getAccessToken } from "./api";
+
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
 export async function listFiles(parentId?: string | null) {
   const query = parentId ? `?parentId=${encodeURIComponent(parentId)}` : "";
@@ -57,5 +60,55 @@ export async function uploadFile(file: File, parentId?: string | null) {
     method: "POST",
     body: formData,
     isFormData: true,
+  });
+}
+
+/* ===========================
+   PREVIEW / DOWNLOAD via BLOB
+   =========================== */
+
+async function fetchFileBlob(path: string): Promise<Blob> {
+  const token = getAccessToken();
+
+  const res = await fetch(`${API_URL}${path}`, {
+    method: "GET",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+
+  if (!res.ok) {
+    let message = "Impossible de récupérer le fichier.";
+    try {
+      const data = await res.json();
+      message = data?.error || message;
+    } catch {
+      // ignore
+    }
+    throw new Error(message);
+  }
+
+  return res.blob();
+}
+
+export async function getPreviewBlob(fileId: string) {
+  return fetchFileBlob(`/files/${fileId}/preview`);
+}
+
+export async function getDownloadBlob(fileId: string) {
+  return fetchFileBlob(`/files/${fileId}/download`);
+}
+
+export async function listTrash() {
+  return apiFetch("/files/trash", { method: "GET" });
+}
+
+export async function hardDeleteItem(id: string) {
+  return apiFetch(`/files/${id}/hard`, {
+    method: "DELETE",
+  });
+}
+
+export async function emptyTrash() {
+  return apiFetch("/files/trash/empty", {
+    method: "DELETE",
   });
 }

@@ -1,4 +1,4 @@
-// files.routes.js
+// backend/src/routes/files.routes.js
 const router = require("express").Router();
 const auth = require("../middlewares/auth.middleware");
 const upload = require("../middlewares/upload.middleware");

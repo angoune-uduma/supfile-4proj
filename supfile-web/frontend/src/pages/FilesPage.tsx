@@ -29,10 +29,14 @@ import CreateNewFolderRoundedIcon from "@mui/icons-material/CreateNewFolderRound
 import DeleteRoundedIcon from "@mui/icons-material/DeleteRounded";
 import DriveFileRenameOutlineRoundedIcon from "@mui/icons-material/DriveFileRenameOutlineRounded";
 import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
+import VisibilityRoundedIcon from "@mui/icons-material/VisibilityRounded";
+import DownloadRoundedIcon from "@mui/icons-material/DownloadRounded";
 
 import {
   createFolder,
   getBreadcrumbs,
+  getDownloadBlob,
+  getPreviewBlob,
   listFiles,
   renameItem,
   softDeleteItem,
@@ -91,6 +95,10 @@ export default function FilesPage() {
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameValue, setRenameValue] = useState("");
   const [renameTarget, setRenameTarget] = useState<FileItem | null>(null);
+
+  const [previewFile, setPreviewFile] = useState<FileItem | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   const sortedItems = useMemo(() => {
     return [...items].sort((a, b) => {
@@ -190,6 +198,56 @@ export default function FilesPage() {
     setRenameValue("");
     await loadFolder(currentParentId);
   }
+async function handlePreview(item: FileItem) {
+  try {
+    setError(null);
+    setPreviewLoading(true);
+
+    // nettoyer ancienne preview
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
+    }
+
+    const blob = await getPreviewBlob(item.id);
+    const objectUrl = URL.createObjectURL(blob);
+
+    setPreviewFile(item);
+    setPreviewUrl(objectUrl);
+  } catch (err: any) {
+    setError(err?.message || "Prévisualisation impossible.");
+  } finally {
+    setPreviewLoading(false);
+  }
+}
+
+async function handleDownload(item: FileItem) {
+  try {
+    setError(null);
+
+    const blob = await getDownloadBlob(item.id);
+    const objectUrl = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = objectUrl;
+    a.download = item.originalName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    URL.revokeObjectURL(objectUrl);
+  } catch (err: any) {
+    setError(err?.message || "Téléchargement impossible.");
+  }
+}
+
+function closePreview() {
+  if (previewUrl) {
+    URL.revokeObjectURL(previewUrl);
+  }
+  setPreviewUrl(null);
+  setPreviewFile(null);
+}
 
   const glassCardSx = (theme: any) => ({
     p: 2,
@@ -391,6 +449,28 @@ export default function FilesPage() {
                     </Box>
 
                     <Stack direction="row" spacing={0.4}>
+                      {item.type === "file" && (
+                        <Tooltip title="Preview">
+                          <IconButton
+                            size="small"
+                            onClick={() => handlePreview(item)}
+                          >
+                            <VisibilityRoundedIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      )}
+
+                      {item.type === "file" && (
+                        <Tooltip title="Télécharger">
+                          <IconButton
+                            size="small"
+                            onClick={() => handleDownload(item)}
+                          >
+                            <DownloadRoundedIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      )}
+
                       <Tooltip title="Renommer">
                         <IconButton
                           size="small"
@@ -437,6 +517,75 @@ export default function FilesPage() {
           </Button>
         </DialogActions>
       </Dialog>
+
+
+<Dialog
+  open={Boolean(previewFile)}
+  onClose={closePreview}
+  maxWidth="lg"
+  fullWidth
+>
+  <DialogTitle>
+    {previewFile?.originalName}
+  </DialogTitle>
+
+  <DialogContent sx={{ minHeight: 400 }}>
+    {previewLoading && (
+      <Typography color="text.secondary">Chargement de la prévisualisation...</Typography>
+    )}
+
+    {!previewLoading && previewFile && previewUrl && previewFile.mimeType?.startsWith("image/") && (
+      <img
+        src={previewUrl}
+        alt={previewFile.originalName}
+        style={{ maxWidth: "100%" }}
+      />
+    )}
+
+    {!previewLoading && previewFile && previewUrl && previewFile.mimeType === "application/pdf" && (
+      <iframe
+        src={previewUrl}
+        width="100%"
+        height="600"
+        title={previewFile.originalName}
+      />
+    )}
+
+    {!previewLoading && previewFile && previewUrl && previewFile.mimeType?.startsWith("video/") && (
+      <video
+        controls
+        width="100%"
+        src={previewUrl}
+      />
+    )}
+
+    {!previewLoading && previewFile && previewUrl && previewFile.mimeType?.startsWith("audio/") && (
+      <audio
+        controls
+        style={{ width: "100%" }}
+        src={previewUrl}
+      />
+    )}
+
+    {!previewLoading &&
+      previewFile &&
+      previewUrl &&
+      !previewFile.mimeType?.startsWith("image/") &&
+      previewFile.mimeType !== "application/pdf" &&
+      !previewFile.mimeType?.startsWith("video/") &&
+      !previewFile.mimeType?.startsWith("audio/") && (
+        <Typography color="text.secondary">
+          Ce type de fichier n’a pas de prévisualisation intégrée.
+        </Typography>
+      )}
+  </DialogContent>
+
+  <DialogActions>
+    <Button onClick={closePreview}>
+      Fermer
+    </Button>
+  </DialogActions>
+</Dialog>
 
       <Dialog open={renameOpen} onClose={() => setRenameOpen(false)} fullWidth maxWidth="xs">
         <DialogTitle>Renommer</DialogTitle>
