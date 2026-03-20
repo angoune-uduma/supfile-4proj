@@ -48,7 +48,13 @@ export async function getBreadcrumbs(id: string) {
   return apiFetch(`/files/breadcrumbs/${id}`, { method: "GET" });
 }
 
-export async function uploadFile(file: File, parentId?: string | null) {
+export async function uploadFile(
+  file: File,
+  parentId?: string | null,
+  onProgress?: (percent: number) => void
+): Promise<{ res: { ok: boolean; status: number }; data: any }> {
+  const token = getAccessToken();
+
   const formData = new FormData();
   formData.append("file", file);
 
@@ -56,10 +62,48 @@ export async function uploadFile(file: File, parentId?: string | null) {
     formData.append("parentId", parentId);
   }
 
-  return apiFetch("/files", {
-    method: "POST",
-    body: formData,
-    isFormData: true,
+  return new Promise((resolve) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${API_URL}/files`);
+
+    if (token) {
+      xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    }
+
+    xhr.upload.onprogress = (event) => {
+      if (!event.lengthComputable || !onProgress) return;
+      const percent = Math.round((event.loaded / event.total) * 100);
+      onProgress(percent);
+    };
+
+    xhr.onload = () => {
+      let data: any = {};
+      try {
+        data = JSON.parse(xhr.responseText || "{}");
+      } catch {
+        data = {};
+      }
+
+      resolve({
+        res: {
+          ok: xhr.status >= 200 && xhr.status < 300,
+          status: xhr.status,
+        },
+        data,
+      });
+    };
+
+    xhr.onerror = () => {
+      resolve({
+        res: {
+          ok: false,
+          status: xhr.status || 0,
+        },
+        data: { error: "UPLOAD_NETWORK_ERROR" },
+      });
+    };
+
+    xhr.send(formData);
   });
 }
 

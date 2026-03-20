@@ -11,6 +11,7 @@ import {
   DialogContent,
   DialogTitle,
   IconButton,
+  LinearProgress,
   Paper,
   Stack,
   TextField,
@@ -100,6 +101,11 @@ export default function FilesPage() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
 
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadingFileName, setUploadingFileName] = useState("");
+  const [dragActive, setDragActive] = useState(false);
+
   const sortedItems = useMemo(() => {
     return [...items].sort((a, b) => {
       if (a.type === "folder" && b.type !== "folder") return -1;
@@ -161,15 +167,72 @@ export default function FilesPage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const { res, data } = await uploadFile(file, currentParentId);
+    try {
+      setError(null);
+      setUploading(true);
+      setUploadProgress(0);
+      setUploadingFileName(file.name);
 
-    if (!res.ok) {
-      setError(data?.error || "Upload impossible.");
-      return;
+      const { res, data } = await uploadFile(file, currentParentId, (percent) => {
+        setUploadProgress(percent);
+      });
+
+      if (!res.ok) {
+        setError(data?.error || "Upload impossible.");
+        return;
+      }
+
+      e.target.value = "";
+      await loadFolder(currentParentId);
+    } finally {
+      setUploading(false);
+      setUploadProgress(0);
+      setUploadingFileName("");
     }
+  }
+function handleDragOver(e: React.DragEvent) {
+  e.preventDefault();
+  setDragActive(true);
+}
 
-    e.target.value = "";
-    await loadFolder(currentParentId);
+function handleDragLeave(e: React.DragEvent) {
+  e.preventDefault();
+  setDragActive(false);
+}
+
+async function handleDrop(e: React.DragEvent) {
+  e.preventDefault();
+  setDragActive(false);
+
+  const files = Array.from(e.dataTransfer.files);
+
+  if (!files.length) return;
+
+  // upload un seul fichier pour l’instant (simple)
+  await uploadSingleFile(files[0]);
+}
+  async function uploadSingleFile(file: File) {
+    try {
+      setError(null);
+      setUploading(true);
+      setUploadProgress(0);
+      setUploadingFileName(file.name);
+
+      const { res, data } = await uploadFile(file, currentParentId, (percent) => {
+        setUploadProgress(percent);
+      });
+
+      if (!res.ok) {
+        setError(data?.error || "Upload impossible.");
+        return;
+      }
+
+      await loadFolder(currentParentId);
+    } finally {
+      setUploading(false);
+      setUploadProgress(0);
+      setUploadingFileName("");
+    }
   }
 
   async function handleDelete(item: FileItem) {
@@ -279,6 +342,7 @@ function closePreview() {
 
   return (
     <Stack spacing={2.2}>
+
       <Box
         sx={{
           display: "flex",
@@ -321,9 +385,54 @@ function closePreview() {
       </Box>
 
       {error && <Alert severity="error">{error}</Alert>}
+        {uploading && (
+          <Paper sx={glassCardSx}>
+            <Stack spacing={1}>
+              <Typography sx={{ fontWeight: 700 }}>
+                Upload en cours{uploadingFileName ? ` : ${uploadingFileName}` : ""}
+              </Typography>
 
-      <Paper sx={glassCardSx}>
+              <LinearProgress
+                variant="determinate"
+                value={uploadProgress}
+                sx={{ height: 10, borderRadius: 999 }}
+              />
+
+              <Typography variant="body2" color="text.secondary">
+                {uploadProgress}%
+              </Typography>
+            </Stack>
+          </Paper>
+        )}
+
+      <Paper
+        sx={(theme) => ({
+          ...glassCardSx(theme),
+          border: dragActive
+            ? "2px dashed #3b82f6"
+            : `1px solid ${theme.palette.divider}`,
+          background: dragActive ? "rgba(59,130,246,0.08)" : undefined,
+        })}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
         <Stack spacing={2}>
+        {dragActive && (
+          <Box
+            sx={{
+              p: 2,
+              borderRadius: 2,
+              border: "2px dashed #3b82f6",
+              textAlign: "center",
+              bgcolor: "rgba(59,130,246,0.08)",
+            }}
+          >
+            <Typography sx={{ fontWeight: 700 }}>
+              Déposez votre fichier ici
+            </Typography>
+          </Box>
+        )}
           <Box
             sx={{
               display: "flex",
