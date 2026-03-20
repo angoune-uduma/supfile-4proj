@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch, clearTokens } from "../services/api";
+import {
+  getDashboardRecent,
+  getDashboardUsage,
+  getSharesWithMe,
+} from "../services/bloc4";
 
 import {
   Box,
@@ -32,46 +37,33 @@ import LinkRoundedIcon from "@mui/icons-material/LinkRounded";
 
 import StatCard from "../components/StatCard";
 
-// ---- Mock data (plus tard: API)
-const QUOTA_GB = 30;
+function bytesToGb(bytes: number) {
+  return bytes / (1024 * 1024 * 1024);
+}
 
-const usage = {
-  used: 12.4, // Go
-  breakdown: [
-    { label: "Vidéos", gb: 6.2, icon: <MovieRoundedIcon fontSize="small" /> },
-    { label: "Images", gb: 3.1, icon: <ImageRoundedIcon fontSize="small" /> },
-    { label: "Documents", gb: 2.4, icon: <DescriptionRoundedIcon fontSize="small" /> },
-    { label: "Audio", gb: 0.5, icon: <MusicNoteRoundedIcon fontSize="small" /> },
-    { label: "Autres", gb: 0.2, icon: <InsertDriveFileRoundedIcon fontSize="small" /> },
-  ],
-};
-
-const recentFiles = [
-  { name: "Cours-SUPFILE.pdf", type: "PDF", size: "4.2 MB", modified: "Aujourd’hui 12:41" },
-  { name: "maquette-dashboard.png", type: "Image", size: "1.1 MB", modified: "Hier 18:03" },
-  { name: "brief-projet.md", type: "Texte", size: "24 KB", modified: "Hier 16:20" },
-  { name: "video-demo.mp4", type: "Vidéo", size: "310 MB", modified: "02/12/2025" },
-  { name: "notes.txt", type: "Texte", size: "3 KB", modified: "01/12/2025" },
-];
-
-const recentShares = [
-  { target: "Lien public", item: "Cours-SUPFILE.pdf", expires: "Expire dans 3 jours" },
-  { target: "Partagé avec", item: "Dossier: Projet M1", expires: "—" },
-  { target: "Lien public", item: "video-demo.mp4", expires: "Protégé par mot de passe" },
-];
-
-function formatGb(n: number) {
+function formatStorageFromGb(n: number) {
+  if (n < 1) {
+    return `${(n * 1024).toFixed(1)} MB`;
+  }
   return `${n.toFixed(1)} Go`;
 }
 
 function percent(used: number, total: number) {
+  if (!total || total <= 0) return 0;
   const p = (used / total) * 100;
   return Math.max(0, Math.min(100, p));
 }
 
-// Mini “bar chart” (stack) sans librairie
-function UsageStackBar() {
-  const usedPct = percent(usage.used, QUOTA_GB);
+function iconFor(key: string) {
+  if (key === "video") return <MovieRoundedIcon fontSize="small" />;
+  if (key === "image") return <ImageRoundedIcon fontSize="small" />;
+  if (key === "audio") return <MusicNoteRoundedIcon fontSize="small" />;
+  if (key === "document") return <DescriptionRoundedIcon fontSize="small" />;
+  return <InsertDriveFileRoundedIcon fontSize="small" />;
+}
+
+function UsageStackBar({ used, total }: { used: number; total: number }) {
+  const usedPct = percent(used, total);
 
   return (
     <Box sx={{ mt: 1.6 }}>
@@ -95,10 +87,10 @@ function UsageStackBar() {
 
       <Box sx={{ display: "flex", justifyContent: "space-between", mt: 0.8 }}>
         <Typography variant="caption" color="text.secondary">
-          Utilisé: {formatGb(usage.used)}
+          Utilisé: {formatStorageFromGb(used)}
         </Typography>
         <Typography variant="caption" color="text.secondary">
-          Libre: {formatGb(QUOTA_GB - usage.used)}
+          Libre: {formatStorageFromGb(Math.max(0, total - used))}
         </Typography>
       </Box>
     </Box>
@@ -107,8 +99,22 @@ function UsageStackBar() {
 
 export default function Dashboard() {
   const nav = useNavigate();
+
   const [me, setMe] = useState<{ email: string; avatarUrl?: string | null } | null>(null);
   const [err, setErr] = useState<string | null>(null);
+
+  const [quotaGb, setQuotaGb] = useState<number>(30);
+  const [usedGb, setUsedGb] = useState<number>(0);
+
+  const [breakdown, setBreakdown] = useState<Array<{ label: string; gb: number; iconKey: string }>>([]);
+
+  const [recentFiles, setRecentFiles] = useState<
+    Array<{ name: string; type: string; size: string; modified: string }>
+  >([]);
+
+  const [recentShares, setRecentShares] = useState<
+    Array<{ target: string; item: string; expires: string }>
+  >([]);
 
   useEffect(() => {
     (async () => {
@@ -127,6 +133,53 @@ export default function Dashboard() {
       setMe(data);
     })();
   }, [nav]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const usageData = await getDashboardUsage();
+
+        const qGb = bytesToGb(Number(usageData?.quotaBytes || 0));
+        const uGb = bytesToGb(Number(usageData?.usedBytes || 0));
+
+        setQuotaGb(Number.isFinite(qGb) && qGb > 0 ? qGb : 30);
+        setUsedGb(Number.isFinite(uGb) && uGb >= 0 ? uGb : 0);
+
+        const mapped = (usageData?.byCategory || []).map((c: { bytes: number; key: string }) => {
+          const gb = bytesToGb(Number(c?.bytes || 0));
+
+          if (c.key === "video") return { label: "Vidéos", gb, iconKey: "video" };
+          if (c.key === "image") return { label: "Images", gb, iconKey: "image" };
+          if (c.key === "audio") return { label: "Audio", gb, iconKey: "audio" };
+          if (c.key === "document") return { label: "Documents", gb, iconKey: "document" };
+          return { label: "Autres", gb, iconKey: "other" };
+        });
+
+        setBreakdown(mapped);
+
+        const recent = await getDashboardRecent(5);
+        setRecentFiles(
+          recent.map((r: any) => ({
+            name: r.name || "—",
+            type: r.type === "folder" ? "Dossier" : "Fichier",
+            size: r.sizeBytes ? `${(r.sizeBytes / 1024 / 1024).toFixed(1)} MB` : "—",
+            modified: r.updatedAt ? new Date(r.updatedAt).toLocaleString() : "—",
+          }))
+        );
+
+        const withMe = await getSharesWithMe();
+        setRecentShares(
+          withMe.slice(0, 3).map((s: any) => ({
+            target: `Partagé avec moi par ${s.fromUser?.email || "?"}`,
+            item: `${s.nodeType === "folder" ? "Dossier" : "Fichier"}: ${s.name || "—"}`,
+            expires: "—",
+          }))
+        );
+      } catch (e: any) {
+        setErr(e?.message || "Erreur lors du chargement du dashboard.");
+      }
+    })();
+  }, []);
 
   const pillSx = (theme: any) => ({
     border: `1px solid ${theme.palette.divider}`,
@@ -177,9 +230,10 @@ export default function Dashboard() {
     },
   });
 
+  const linksActive = recentShares.length;
+
   return (
     <Stack spacing={2.2}>
-      {/* Header */}
       <Box
         sx={{
           display: "flex",
@@ -207,13 +261,18 @@ export default function Dashboard() {
         <Stack direction="row" spacing={1} alignItems="center">
           {me && <Chip label={me.email} variant="outlined" sx={pillSx} />}
 
-          <Button variant="outlined" startIcon={<SearchRoundedIcon />}>
+          <Button
+            variant="outlined"
+            startIcon={<SearchRoundedIcon />}
+            onClick={() => nav("/files")}
+          >
             Rechercher
           </Button>
 
           <Button
             variant="contained"
             startIcon={<UploadRoundedIcon />}
+            onClick={() => nav("/files")}
             sx={(theme) => ({
               background: "linear-gradient(135deg, #2563eb, #4f46e5)",
               boxShadow:
@@ -227,7 +286,6 @@ export default function Dashboard() {
         </Stack>
       </Box>
 
-      {/* Top layout (CSS Grid) */}
       <Box
         sx={{
           display: "grid",
@@ -236,7 +294,6 @@ export default function Dashboard() {
           alignItems: "start",
         }}
       >
-        {/* Hero card */}
         <Box>
           <Paper sx={heroSx}>
             <Typography variant="body2" color="text.secondary">
@@ -251,10 +308,10 @@ export default function Dashboard() {
                 mt: 0.4,
               }}
             >
-              {formatGb(usage.used)} / {QUOTA_GB} Go
+              {formatStorageFromGb(usedGb)} / {quotaGb.toFixed(0)} Go
             </Typography>
 
-            <UsageStackBar />
+            <UsageStackBar used={usedGb} total={quotaGb} />
 
             <Box sx={{ mt: 2.2, position: "relative", zIndex: 1 }}>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
@@ -262,7 +319,7 @@ export default function Dashboard() {
               </Typography>
 
               <Stack direction="row" spacing={1.1} sx={{ flexWrap: "wrap" }}>
-                {usage.breakdown.map((b) => (
+                {(breakdown.length ? breakdown : [{ label: "Autres", gb: 0, iconKey: "other" }]).map((b) => (
                   <Paper key={b.label} sx={(theme) => ({ p: 1.2, minWidth: 170, ...smallPanelSx(theme) })}>
                     <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
@@ -277,13 +334,13 @@ export default function Dashboard() {
                             color: "primary.main",
                           })}
                         >
-                          {b.icon}
+                          {iconFor(b.iconKey)}
                         </Avatar>
                         <Typography variant="body2" color="text.secondary">
                           {b.label}
                         </Typography>
                       </Box>
-                      <Typography sx={{ fontWeight: 800 }}>{formatGb(b.gb)}</Typography>
+                      <Typography sx={{ fontWeight: 800 }}>{formatStorageFromGb(b.gb)}</Typography>
                     </Box>
                   </Paper>
                 ))}
@@ -303,15 +360,23 @@ export default function Dashboard() {
               }}
             >
               <Stack direction="row" spacing={1}>
-                <Chip label="Quota: 30 Go" variant="outlined" sx={pillSx} />
+                <Chip label={`Quota: ${quotaGb.toFixed(0)} Go`} variant="outlined" sx={pillSx} />
                 <Chip label="Sync: Activée" variant="outlined" sx={pillSx} />
               </Stack>
 
               <Stack direction="row" spacing={1}>
-                <Button variant="outlined" startIcon={<CreateNewFolderRoundedIcon />}>
+                <Button
+                  variant="outlined"
+                  startIcon={<CreateNewFolderRoundedIcon />}
+                  onClick={() => nav("/files")}
+                >
                   Nouveau dossier
                 </Button>
-                <Button variant="outlined" startIcon={<ShareRoundedIcon />}>
+                <Button
+                  variant="outlined"
+                  startIcon={<ShareRoundedIcon />}
+                  onClick={() => nav("/shared")}
+                >
                   Partager
                 </Button>
               </Stack>
@@ -319,18 +384,20 @@ export default function Dashboard() {
           </Paper>
         </Box>
 
-        {/* Right metrics */}
         <Box>
           <Stack spacing={1.2}>
-            <StatCard title="Stockage libre" value={formatGb(QUOTA_GB - usage.used)} pill="Sur 30 Go" />
-            <StatCard title="Fichiers récents" value="5" pill="Dernières modifications" />
-            <StatCard title="Liens de partage actifs" value="3" />
+            <StatCard
+              title="Stockage libre"
+              value={formatStorageFromGb(Math.max(0, quotaGb - usedGb))}
+              pill={`Sur ${quotaGb.toFixed(0)} Go`}
+            />
+            <StatCard title="Fichiers récents" value={`${recentFiles.length}`} pill="Dernières modifications" />
+            <StatCard title="Liens de partage actifs" value={`${linksActive}`} />
             <StatCard title="Corbeille" value="0 élément" />
           </Stack>
         </Box>
       </Box>
 
-      {/* Bottom layout (CSS Grid) */}
       <Box
         sx={{
           display: "grid",
@@ -339,7 +406,6 @@ export default function Dashboard() {
           alignItems: "start",
         }}
       >
-        {/* Recent files */}
         <Box sx={{ minWidth: 0 }}>
           <Paper sx={glassCardSx}>
             <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1 }}>
@@ -349,7 +415,11 @@ export default function Dashboard() {
                   Les 5 derniers fichiers modifiés ou uploadés.
                 </Typography>
               </Box>
-              <Typography variant="body2" sx={{ color: "primary.main", cursor: "pointer", mt: 0.3 }}>
+              <Typography
+                variant="body2"
+                sx={{ color: "primary.main", cursor: "pointer", mt: 0.3 }}
+                onClick={() => nav("/files")}
+              >
                 Tout voir
               </Typography>
             </Box>
@@ -408,13 +478,22 @@ export default function Dashboard() {
                       </TableCell>
                     </TableRow>
                   ))}
+
+                  {recentFiles.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={4}>
+                        <Typography variant="body2" color="text.secondary">
+                          Aucun fichier récent.
+                        </Typography>
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </Box>
           </Paper>
         </Box>
 
-        {/* Shares */}
         <Box sx={{ minWidth: 0 }}>
           <Paper sx={glassCardSx}>
             <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1 }}>
@@ -424,7 +503,7 @@ export default function Dashboard() {
                   Liens publics et dossiers partagés récemment.
                 </Typography>
               </Box>
-              <IconButton size="small" sx={pillSx}>
+              <IconButton size="small" sx={pillSx} onClick={() => nav("/shared")}>
                 <LinkRoundedIcon fontSize="small" />
               </IconButton>
             </Box>
@@ -491,6 +570,14 @@ export default function Dashboard() {
                   </Box>
                 </Paper>
               ))}
+
+              {recentShares.length === 0 && (
+                <Paper sx={(theme) => ({ p: 1.4, ...smallPanelSx(theme) })}>
+                  <Typography variant="body2" color="text.secondary">
+                    Aucun partage récent.
+                  </Typography>
+                </Paper>
+              )}
             </Stack>
           </Paper>
         </Box>

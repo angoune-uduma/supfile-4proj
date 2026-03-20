@@ -16,6 +16,7 @@ import {
   TextField,
   Tooltip,
   Typography,
+  MenuItem,
 } from "@mui/material";
 
 import FolderRoundedIcon from "@mui/icons-material/FolderRounded";
@@ -31,6 +32,12 @@ import DriveFileRenameOutlineRoundedIcon from "@mui/icons-material/DriveFileRena
 import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
 import VisibilityRoundedIcon from "@mui/icons-material/VisibilityRounded";
 import DownloadRoundedIcon from "@mui/icons-material/DownloadRounded";
+import ShareRoundedIcon from "@mui/icons-material/ShareRounded";
+import LinkRoundedIcon from "@mui/icons-material/LinkRounded";
+import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
+import PersonAddRoundedIcon from "@mui/icons-material/PersonAddRounded";
+import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
+import ClearRoundedIcon from "@mui/icons-material/ClearRounded";
 
 import {
   createFolder,
@@ -42,6 +49,11 @@ import {
   softDeleteItem,
   uploadFile,
 } from "../services/files";
+
+import {
+  createInternalShare,
+  createPublicShare,
+} from "../services/bloc4";
 
 type FileItem = {
   id: string;
@@ -59,12 +71,36 @@ type Crumb = {
   name: string;
 };
 
+type TypeFilter = "all" | "file" | "folder";
+type MimeFilter = "all" | "image" | "video" | "audio" | "document" | "other";
+
 function formatSize(bytes: number) {
   if (!bytes) return "—";
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
+function getMimeGroup(mimeType: string | null, type: "file" | "folder"): MimeFilter {
+  if (type === "folder") return "other";
+  if (!mimeType) return "other";
+  if (mimeType.startsWith("image/")) return "image";
+  if (mimeType.startsWith("video/")) return "video";
+  if (mimeType.startsWith("audio/")) return "audio";
+
+  if (
+    mimeType === "application/pdf" ||
+    mimeType.includes("word") ||
+    mimeType.includes("text") ||
+    mimeType.includes("document") ||
+    mimeType.includes("sheet") ||
+    mimeType.includes("presentation")
+  ) {
+    return "document";
+  }
+
+  return "other";
 }
 
 function getFileIcon(item: FileItem) {
@@ -100,13 +136,45 @@ export default function FilesPage() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
 
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareTarget, setShareTarget] = useState<FileItem | null>(null);
+  const [shareLink, setShareLink] = useState("");
+  const [shareExpiresAt, setShareExpiresAt] = useState("");
+  const [sharePassword, setSharePassword] = useState("");
+  const [shareToEmail, setShareToEmail] = useState("");
+  const [shareError, setShareError] = useState("");
+
+  // recherche / filtres
+  const [searchTerm, setSearchTerm] = useState("");
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
+  const [mimeFilter, setMimeFilter] = useState<MimeFilter>("all");
+
+  const filteredItems = useMemo(() => {
+    return items.filter((item) => {
+      const matchesName = item.originalName
+        .toLowerCase()
+        .includes(searchTerm.trim().toLowerCase());
+
+      const matchesType =
+        typeFilter === "all" ? true : item.type === typeFilter;
+
+      const itemMimeGroup = getMimeGroup(item.mimeType, item.type);
+      const matchesMime =
+        mimeFilter === "all"
+          ? true
+          : item.type === "file" && itemMimeGroup === mimeFilter;
+
+      return matchesName && matchesType && matchesMime;
+    });
+  }, [items, searchTerm, typeFilter, mimeFilter]);
+
   const sortedItems = useMemo(() => {
-    return [...items].sort((a, b) => {
+    return [...filteredItems].sort((a, b) => {
       if (a.type === "folder" && b.type !== "folder") return -1;
       if (a.type !== "folder" && b.type === "folder") return 1;
       return a.originalName.localeCompare(b.originalName);
     });
-  }, [items]);
+  }, [filteredItems]);
 
   async function loadFolder(parentId?: string | null) {
     setLoading(true);
@@ -198,56 +266,128 @@ export default function FilesPage() {
     setRenameValue("");
     await loadFolder(currentParentId);
   }
-async function handlePreview(item: FileItem) {
-  try {
-    setError(null);
-    setPreviewLoading(true);
 
-    // nettoyer ancienne preview
+  async function handlePreview(item: FileItem) {
+    try {
+      setError(null);
+      setPreviewLoading(true);
+
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+        setPreviewUrl(null);
+      }
+
+      const blob = await getPreviewBlob(item.id);
+      const objectUrl = URL.createObjectURL(blob);
+
+      setPreviewFile(item);
+      setPreviewUrl(objectUrl);
+    } catch (err: any) {
+      setError(err?.message || "Prévisualisation impossible.");
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
+  async function handleDownload(item: FileItem) {
+    try {
+      setError(null);
+
+      const blob = await getDownloadBlob(item.id);
+      const objectUrl = URL.createObjectURL(blob);
+
+      const a = document.createElement("a");
+      a.href = objectUrl;
+      a.download = item.originalName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      URL.revokeObjectURL(objectUrl);
+    } catch (err: any) {
+      setError(err?.message || "Téléchargement impossible.");
+    }
+  }
+
+  function closePreview() {
     if (previewUrl) {
       URL.revokeObjectURL(previewUrl);
-      setPreviewUrl(null);
+    }
+    setPreviewUrl(null);
+    setPreviewFile(null);
+  }
+
+  function openShareDialog(item: FileItem) {
+    setShareTarget(item);
+    setShareLink("");
+    setShareExpiresAt("");
+    setSharePassword("");
+    setShareToEmail("");
+    setShareError("");
+    setShareOpen(true);
+  }
+
+ async function handleCreatePublicShare() {
+  if (!shareTarget) return;
+
+  try {
+    setShareError("");
+    const share = await createPublicShare({
+      nodeId: shareTarget.id,
+      expiresAt: shareExpiresAt || undefined,
+      password: sharePassword || undefined,
+    });
+
+    const url = share.url || "";
+    setShareLink(url);
+
+    if (url) {
+      try {
+        await navigator.clipboard.writeText(url);
+      } catch {
+        // ignore si la copie auto échoue
+      }
+    }
+  } catch (err: any) {
+    setShareError(err?.message || "Création du lien public impossible.");
+  }
+}
+
+  async function handleCreateInternalShare() {
+    if (!shareTarget) return;
+
+    if (!shareToEmail.trim()) {
+      setShareError("Renseigne l’email du destinataire.");
+      return;
     }
 
-    const blob = await getPreviewBlob(item.id);
-    const objectUrl = URL.createObjectURL(blob);
-
-    setPreviewFile(item);
-    setPreviewUrl(objectUrl);
-  } catch (err: any) {
-    setError(err?.message || "Prévisualisation impossible.");
-  } finally {
-    setPreviewLoading(false);
+    try {
+      setShareError("");
+      await createInternalShare({
+        nodeId: shareTarget.id,
+        nodeType: shareTarget.type,
+        toEmail: shareToEmail.trim(),
+      });
+      setShareOpen(false);
+    } catch (err: any) {
+      setShareError(err?.message || "Partage interne impossible.");
+    }
   }
-}
 
-async function handleDownload(item: FileItem) {
-  try {
-    setError(null);
-
-    const blob = await getDownloadBlob(item.id);
-    const objectUrl = URL.createObjectURL(blob);
-
-    const a = document.createElement("a");
-    a.href = objectUrl;
-    a.download = item.originalName;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-
-    URL.revokeObjectURL(objectUrl);
-  } catch (err: any) {
-    setError(err?.message || "Téléchargement impossible.");
+  async function handleCopyShareLink() {
+    if (!shareLink) return;
+    try {
+      await navigator.clipboard.writeText(shareLink);
+    } catch {
+      setShareError("Impossible de copier le lien.");
+    }
   }
-}
 
-function closePreview() {
-  if (previewUrl) {
-    URL.revokeObjectURL(previewUrl);
+  function resetFilters() {
+    setSearchTerm("");
+    setTypeFilter("all");
+    setMimeFilter("all");
   }
-  setPreviewUrl(null);
-  setPreviewFile(null);
-}
 
   const glassCardSx = (theme: any) => ({
     p: 2,
@@ -369,11 +509,88 @@ function closePreview() {
             )}
           </Box>
 
+          <Box
+            sx={{
+              display: "grid",
+              gridTemplateColumns: { xs: "1fr", md: "2fr 1fr 1fr auto" },
+              gap: 1.2,
+              alignItems: "center",
+            }}
+          >
+            <TextField
+              fullWidth
+              label="Rechercher par nom"
+              placeholder="ex: pdf, rapport, video..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              InputProps={{
+                startAdornment: <SearchRoundedIcon fontSize="small" sx={{ mr: 1, color: "text.secondary" }} />,
+              }}
+            />
+
+            <TextField
+              select
+              fullWidth
+              label="Type"
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value as TypeFilter)}
+            >
+              <MenuItem value="all">Tous</MenuItem>
+              <MenuItem value="file">Fichiers</MenuItem>
+              <MenuItem value="folder">Dossiers</MenuItem>
+            </TextField>
+
+            <TextField
+              select
+              fullWidth
+              label="Catégorie"
+              value={mimeFilter}
+              onChange={(e) => setMimeFilter(e.target.value as MimeFilter)}
+            >
+              <MenuItem value="all">Toutes</MenuItem>
+              <MenuItem value="image">Images</MenuItem>
+              <MenuItem value="video">Vidéos</MenuItem>
+              <MenuItem value="audio">Audio</MenuItem>
+              <MenuItem value="document">Documents</MenuItem>
+              <MenuItem value="other">Autres</MenuItem>
+            </TextField>
+
+            <Button
+              variant="outlined"
+              startIcon={<ClearRoundedIcon />}
+              onClick={resetFilters}
+            >
+              Réinitialiser
+            </Button>
+          </Box>
+
+          <Stack direction="row" spacing={1} flexWrap="wrap">
+            <Chip label={`${sortedItems.length} résultat(s)`} variant="outlined" />
+            {typeFilter !== "all" && (
+              <Chip label={`Type: ${typeFilter === "file" ? "Fichiers" : "Dossiers"}`} />
+            )}
+            {mimeFilter !== "all" && (
+              <Chip
+                label={`Catégorie: ${
+                  mimeFilter === "image"
+                    ? "Images"
+                    : mimeFilter === "video"
+                    ? "Vidéos"
+                    : mimeFilter === "audio"
+                    ? "Audio"
+                    : mimeFilter === "document"
+                    ? "Documents"
+                    : "Autres"
+                }`}
+              />
+            )}
+          </Stack>
+
           {loading ? (
             <Typography color="text.secondary">Chargement...</Typography>
           ) : sortedItems.length === 0 ? (
             <Typography color="text.secondary">
-              Ce dossier est vide.
+              Aucun fichier ou dossier trouvé.
             </Typography>
           ) : (
             <Box
@@ -436,7 +653,7 @@ function closePreview() {
                         </Typography>
                       </Tooltip>
 
-                      <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>
+                      <Stack direction="row" spacing={1} sx={{ mt: 0.5, flexWrap: "wrap" }}>
                         <Chip
                           size="small"
                           label={item.type === "folder" ? "Dossier" : "Fichier"}
@@ -445,16 +662,36 @@ function closePreview() {
                         {item.type === "file" && (
                           <Chip size="small" label={formatSize(item.size)} variant="outlined" />
                         )}
+                        {item.type === "file" && (
+                          <Chip
+                            size="small"
+                            label={
+                              getMimeGroup(item.mimeType, item.type) === "image"
+                                ? "Image"
+                                : getMimeGroup(item.mimeType, item.type) === "video"
+                                ? "Vidéo"
+                                : getMimeGroup(item.mimeType, item.type) === "audio"
+                                ? "Audio"
+                                : getMimeGroup(item.mimeType, item.type) === "document"
+                                ? "Document"
+                                : "Autre"
+                            }
+                            variant="outlined"
+                          />
+                        )}
                       </Stack>
                     </Box>
 
                     <Stack direction="row" spacing={0.4}>
+                      <Tooltip title="Partager">
+                        <IconButton size="small" onClick={() => openShareDialog(item)}>
+                          <ShareRoundedIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+
                       {item.type === "file" && (
                         <Tooltip title="Preview">
-                          <IconButton
-                            size="small"
-                            onClick={() => handlePreview(item)}
-                          >
+                          <IconButton size="small" onClick={() => handlePreview(item)}>
                             <VisibilityRoundedIcon fontSize="small" />
                           </IconButton>
                         </Tooltip>
@@ -462,10 +699,7 @@ function closePreview() {
 
                       {item.type === "file" && (
                         <Tooltip title="Télécharger">
-                          <IconButton
-                            size="small"
-                            onClick={() => handleDownload(item)}
-                          >
+                          <IconButton size="small" onClick={() => handleDownload(item)}>
                             <DownloadRoundedIcon fontSize="small" />
                           </IconButton>
                         </Tooltip>
@@ -518,74 +752,56 @@ function closePreview() {
         </DialogActions>
       </Dialog>
 
+      <Dialog open={Boolean(previewFile)} onClose={closePreview} maxWidth="lg" fullWidth>
+        <DialogTitle>{previewFile?.originalName}</DialogTitle>
 
-<Dialog
-  open={Boolean(previewFile)}
-  onClose={closePreview}
-  maxWidth="lg"
-  fullWidth
->
-  <DialogTitle>
-    {previewFile?.originalName}
-  </DialogTitle>
+        <DialogContent sx={{ minHeight: 400 }}>
+          {previewLoading && (
+            <Typography color="text.secondary">Chargement de la prévisualisation...</Typography>
+          )}
 
-  <DialogContent sx={{ minHeight: 400 }}>
-    {previewLoading && (
-      <Typography color="text.secondary">Chargement de la prévisualisation...</Typography>
-    )}
+          {!previewLoading && previewFile && previewUrl && previewFile.mimeType?.startsWith("image/") && (
+            <img
+              src={previewUrl}
+              alt={previewFile.originalName}
+              style={{ maxWidth: "100%" }}
+            />
+          )}
 
-    {!previewLoading && previewFile && previewUrl && previewFile.mimeType?.startsWith("image/") && (
-      <img
-        src={previewUrl}
-        alt={previewFile.originalName}
-        style={{ maxWidth: "100%" }}
-      />
-    )}
+          {!previewLoading && previewFile && previewUrl && previewFile.mimeType === "application/pdf" && (
+            <iframe
+              src={previewUrl}
+              width="100%"
+              height="600"
+              title={previewFile.originalName}
+            />
+          )}
 
-    {!previewLoading && previewFile && previewUrl && previewFile.mimeType === "application/pdf" && (
-      <iframe
-        src={previewUrl}
-        width="100%"
-        height="600"
-        title={previewFile.originalName}
-      />
-    )}
+          {!previewLoading && previewFile && previewUrl && previewFile.mimeType?.startsWith("video/") && (
+            <video controls width="100%" src={previewUrl} />
+          )}
 
-    {!previewLoading && previewFile && previewUrl && previewFile.mimeType?.startsWith("video/") && (
-      <video
-        controls
-        width="100%"
-        src={previewUrl}
-      />
-    )}
+          {!previewLoading && previewFile && previewUrl && previewFile.mimeType?.startsWith("audio/") && (
+            <audio controls style={{ width: "100%" }} src={previewUrl} />
+          )}
 
-    {!previewLoading && previewFile && previewUrl && previewFile.mimeType?.startsWith("audio/") && (
-      <audio
-        controls
-        style={{ width: "100%" }}
-        src={previewUrl}
-      />
-    )}
+          {!previewLoading &&
+            previewFile &&
+            previewUrl &&
+            !previewFile.mimeType?.startsWith("image/") &&
+            previewFile.mimeType !== "application/pdf" &&
+            !previewFile.mimeType?.startsWith("video/") &&
+            !previewFile.mimeType?.startsWith("audio/") && (
+              <Typography color="text.secondary">
+                Ce type de fichier n’a pas de prévisualisation intégrée.
+              </Typography>
+            )}
+        </DialogContent>
 
-    {!previewLoading &&
-      previewFile &&
-      previewUrl &&
-      !previewFile.mimeType?.startsWith("image/") &&
-      previewFile.mimeType !== "application/pdf" &&
-      !previewFile.mimeType?.startsWith("video/") &&
-      !previewFile.mimeType?.startsWith("audio/") && (
-        <Typography color="text.secondary">
-          Ce type de fichier n’a pas de prévisualisation intégrée.
-        </Typography>
-      )}
-  </DialogContent>
-
-  <DialogActions>
-    <Button onClick={closePreview}>
-      Fermer
-    </Button>
-  </DialogActions>
-</Dialog>
+        <DialogActions>
+          <Button onClick={closePreview}>Fermer</Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={renameOpen} onClose={() => setRenameOpen(false)} fullWidth maxWidth="xs">
         <DialogTitle>Renommer</DialogTitle>
@@ -604,6 +820,94 @@ function closePreview() {
           <Button onClick={handleRename} variant="contained">
             Enregistrer
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={shareOpen} onClose={() => setShareOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>Partager</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2}>
+            <Typography sx={{ fontWeight: 800 }}>
+              Élément : {shareTarget?.originalName || "—"}
+            </Typography>
+
+            <Box>
+              <Typography sx={{ fontWeight: 800, mb: 1 }}>Lien public</Typography>
+              <Stack spacing={1.2}>
+                <TextField
+                  fullWidth
+                  label="Expiration (optionnel)"
+                  type="datetime-local"
+                  InputLabelProps={{ shrink: true }}
+                  value={shareExpiresAt}
+                  onChange={(e) => setShareExpiresAt(e.target.value)}
+                />
+
+                <TextField
+                  fullWidth
+                  label="Mot de passe (optionnel)"
+                  type="password"
+                  value={sharePassword}
+                  onChange={(e) => setSharePassword(e.target.value)}
+                />
+
+                <Stack direction="row" spacing={1}>
+                  <Button
+                    variant="contained"
+                    startIcon={<LinkRoundedIcon />}
+                    onClick={handleCreatePublicShare}
+                  >
+                    Générer lien
+                  </Button>
+
+                  <Button
+                    variant="outlined"
+                    startIcon={<ContentCopyRoundedIcon />}
+                    disabled={!shareLink}
+                    onClick={handleCopyShareLink}
+                  >
+                    Copier
+                  </Button>
+                </Stack>
+
+                {shareLink && (
+                  <TextField
+                    fullWidth
+                    label="Lien public"
+                    value={shareLink}
+                    InputProps={{ readOnly: true }}
+                  />
+                )}
+              </Stack>
+            </Box>
+
+            <Box>
+              <Typography sx={{ fontWeight: 800, mb: 1 }}>
+                Partage interne
+              </Typography>
+              <Stack spacing={1.2}>
+                <TextField
+                  fullWidth
+                  label="Email du destinataire"
+                  value={shareToEmail}
+                  onChange={(e) => setShareToEmail(e.target.value)}
+                />
+
+                <Button
+                  variant="outlined"
+                  startIcon={<PersonAddRoundedIcon />}
+                  onClick={handleCreateInternalShare}
+                >
+                  Partager en interne
+                </Button>
+              </Stack>
+            </Box>
+
+            {shareError && <Alert severity="error">{shareError}</Alert>}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShareOpen(false)}>Fermer</Button>
         </DialogActions>
       </Dialog>
     </Stack>
