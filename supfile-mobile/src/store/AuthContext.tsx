@@ -7,6 +7,7 @@ type User = {
   id?: string;
   email?: string;
   avatarUrl?: string | null;
+  avatarMeta?: any;
 };
 
 type AuthState = {
@@ -17,6 +18,7 @@ type AuthState = {
   register: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshMe: () => Promise<void>;
+  setUser: React.Dispatch<React.SetStateAction<User | null>>;
 };
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -42,7 +44,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     (async () => {
       try {
         const token = await getAccessToken();
-        if (token) await refreshMe();
+        if (token) {
+          await refreshMe();
+        } else {
+          setUser(null);
+        }
       } catch {
         await clearTokens();
         setUser(null);
@@ -53,22 +59,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   async function login(email: string, password: string) {
-    await loginApi(email, password); // stocke tokens via services/auth.ts
+    await loginApi(email, password);
     await refreshMe();
   }
 
   async function register(email: string, password: string) {
     await registerApi(email, password);
-    await login(email, password); // auto-login comme ton web
+    await refreshMe();
   }
 
   async function logout() {
-    await logoutApi(); // clear tokens
+    await logoutApi();
     setUser(null);
   }
 
   const value = useMemo<AuthState>(
-    () => ({ isReady, isAuthed, user, login, register, logout, refreshMe }),
+    () => ({ isReady, isAuthed, user, login, register, logout, refreshMe, setUser }),
     [isReady, isAuthed, user]
   );
 

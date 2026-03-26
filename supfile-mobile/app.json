@@ -2,6 +2,7 @@
   "expo": {
     "name": "supfile-mobile",
     "slug": "supfile-mobile",
+    "scheme": "supfilemobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/logo.png",
@@ -29,7 +30,8 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-web-browser"
     ]
   }
 }

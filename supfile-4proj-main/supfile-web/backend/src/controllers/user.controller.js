@@ -1,12 +1,10 @@
-// backend/src/controllers/user.controller.js
 const bcrypt = require("bcrypt");
 const User = require("../models/User");
 
-/**
- * GET /user/me
- * Retourne l'utilisateur connecté
- * (req.user est injecté par auth.middleware)
- */
+function normalizeEmail(email) {
+  return String(email || "").trim().toLowerCase();
+}
+
 exports.me = async (req, res) => {
   try {
     const user = await User.findById(req.user._id).select(
@@ -24,15 +22,11 @@ exports.me = async (req, res) => {
       avatarMeta: user.avatarMeta || null,
       createdAt: user.createdAt,
     });
-  } catch (err) {
+  } catch {
     return res.status(500).json({ error: "SERVER_ERROR" });
   }
 };
 
-/**
- * PATCH /user/me
- * Modifier email / avatar
- */
 exports.updateMe = async (req, res) => {
   try {
     const { email, avatarUrl, avatarMeta } = req.body;
@@ -42,7 +36,21 @@ exports.updateMe = async (req, res) => {
       return res.status(404).json({ error: "USER_NOT_FOUND" });
     }
 
-    if (email) user.email = email;
+    if (email) {
+      const normalized = normalizeEmail(email);
+
+      const existing = await User.findOne({
+        email: normalized,
+        _id: { $ne: user._id },
+      });
+
+      if (existing) {
+        return res.status(409).json({ error: "EMAIL_ALREADY_USED" });
+      }
+
+      user.email = normalized;
+    }
+
     if (avatarUrl !== undefined) user.avatarUrl = avatarUrl;
     if (avatarMeta !== undefined) user.avatarMeta = avatarMeta;
 
@@ -57,15 +65,11 @@ exports.updateMe = async (req, res) => {
         avatarMeta: user.avatarMeta || null,
       },
     });
-  } catch (err) {
+  } catch {
     return res.status(500).json({ error: "SERVER_ERROR" });
   }
 };
 
-/**
- * PATCH /user/me/password
- * Changer mot de passe (compte local)
- */
 exports.changePassword = async (req, res) => {
   try {
     const { oldPassword, newPassword } = req.body;
@@ -84,7 +88,7 @@ exports.changePassword = async (req, res) => {
     await user.save();
 
     return res.json({ ok: true });
-  } catch (err) {
+  } catch {
     return res.status(500).json({ error: "SERVER_ERROR" });
   }
 };

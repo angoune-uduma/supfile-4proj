@@ -9,7 +9,6 @@ import LoginPage from "./pages/auth/LoginPage";
 import RegisterPage from "./pages/auth/RegisterPage";
 import AuthSuccess from "./pages/auth/AuthSuccess";
 import RequireAuth from "./components/auth/RequireAuth";
-
 import FilesPage from "./pages/FilesPage";
 
 type AppProps = {
@@ -48,7 +47,7 @@ function AppLayout({ mode, toggleTheme }: AppProps) {
           <Route path="/settings" element={<ProfilePage />} />
 
           {/* autres pages */}
-          <Route path="/files" element={<Placeholder title="Mes fichiers" />} />
+          <Route path="/files" element={<FilesPage />} />
           <Route path="/shared" element={<Placeholder title="Partagés" />} />
           <Route path="/trash" element={<Placeholder title="Corbeille" />} />
 
@@ -82,9 +81,6 @@ export default function App({ mode, toggleTheme }: AppProps) {
           </RequireAuth>
         }
       />
-
-      {/* fallback global */}
-      <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   );
 }
