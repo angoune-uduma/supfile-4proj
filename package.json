@@ -1,7 +1,5 @@
 {
   "dependencies": {
-    "expo-auth-session": "^55.0.9",
-    "expo-web-browser": "^55.0.10",
     "multer": "^2.1.1"
   }
 }
