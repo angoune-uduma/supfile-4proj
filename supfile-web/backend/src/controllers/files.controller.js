@@ -35,3 +35,18 @@ exports.listMine = async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 };
+
+exports.deleteMine = async (req, res) => {
+  try {
+    const file = await File.findOneAndDelete({
+      _id: req.params.id,
+      userId: req.userId
+    });
+    if (!file) {
+      return res.status(404).json({ error: "FILE_NOT_FOUND" });
+    }
+    return res.json({ message: "File deleted" });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+};
