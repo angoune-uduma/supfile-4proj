@@ -2,6 +2,7 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const archiver = require("archiver");
 
 const FileItem = require("../models/FileItem");
 
@@ -12,7 +13,9 @@ function ensureDir(dirPath) {
 function getStorageBaseDir() {
   return process.env.STORAGE_DIR || path.join(process.cwd(), "storage");
 }
-
+function getAbsolutePathFromStorageRelPath(storageRelPath) {
+  return path.join(getStorageBaseDir(), ...storageRelPath.split("/"));
+}
 async function deletePhysicalFileIfNeeded(item) {
   if (item.type !== "file") return;
   if (!item.storageRelPath) return;
@@ -165,6 +168,87 @@ exports.download = async (req, res) => {
     return res.status(500).json({ error: "DOWNLOAD_FAILED", message: err.message });
   }
 };
+exports.downloadFolder = async (req, res) => {
+  try {
+    if (!req.user?._id) {
+      return res.status(401).json({ error: "UNAUTHORIZED" });
+    }
+
+    const ownerId = req.user._id;
+
+    const rootFolder = await FileItem.findOne({
+      _id: req.params.id,
+      ownerId,
+      deletedAt: null,
+      type: "folder",
+    }).select("_id originalName type");
+
+    if (!rootFolder) {
+      return res.status(404).json({ error: "FOLDER_NOT_FOUND" });
+    }
+
+    const safeName = (rootFolder.originalName || "folder").replace(/[\\/:*?"<>|]+/g, "_");
+
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${encodeURIComponent(safeName)}.zip"`
+    );
+
+    const archive = archiver("zip", { zlib: { level: 9 } });
+
+    archive.on("error", (err) => {
+      throw err;
+    });
+
+    archive.pipe(res);
+
+    const queue = [
+      {
+        folderId: rootFolder._id,
+        relativePath: safeName,
+      },
+    ];
+
+    while (queue.length > 0) {
+      const current = queue.shift();
+
+      const children = await FileItem.find({
+        ownerId,
+        deletedAt: null,
+        parentId: current.folderId,
+      }).select("_id type originalName storageRelPath");
+
+      for (const child of children) {
+        const childPath = `${current.relativePath}/${child.originalName}`;
+
+        if (child.type === "folder") {
+          archive.append("", { name: `${childPath}/` });
+          queue.push({
+            folderId: child._id,
+            relativePath: childPath,
+          });
+        } else if (child.type === "file" && child.storageRelPath) {
+          const absPath = getAbsolutePathFromStorageRelPath(child.storageRelPath);
+
+          if (fs.existsSync(absPath)) {
+            archive.file(absPath, { name: childPath });
+          }
+        }
+      }
+    }
+
+    await archive.finalize();
+  } catch (err) {
+    if (!res.headersSent) {
+      return res.status(500).json({
+        error: "FOLDER_DOWNLOAD_FAILED",
+        message: err.message,
+      });
+    }
+  }
+};
+
 exports.preview = async (req, res) => {
   try {
     if (!req.user?._id) return res.status(401).json({ error: "UNAUTHORIZED" });

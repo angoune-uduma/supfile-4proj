@@ -156,7 +156,9 @@ export async function emptyTrash() {
     method: "DELETE",
   });
 }
-
+export async function getFolderDownloadBlob(folderId: string) {
+  return fetchFileBlob(`/files/${folderId}/download-folder`);
+}
 
 /*
 export async function moveFile(fileId: string, parentId: string | null) {

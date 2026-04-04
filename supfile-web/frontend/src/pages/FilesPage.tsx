@@ -46,6 +46,7 @@ import {
   createFolder,
   getBreadcrumbs,
   getDownloadBlob,
+  getFolderDownloadBlob,
   getPreviewBlob,
   listFiles,
   renameItem,
@@ -357,12 +358,20 @@ async function uploadSingleFile(file: File) {
     try {
       setError(null);
 
-      const blob = await getDownloadBlob(item.id);
+      const blob =
+        item.type === "folder"
+          ? await getFolderDownloadBlob(item.id)
+          : await getDownloadBlob(item.id);
+
       const objectUrl = URL.createObjectURL(blob);
 
       const a = document.createElement("a");
       a.href = objectUrl;
-      a.download = item.originalName;
+      a.download =
+        item.type === "folder"
+          ? `${item.originalName}.zip`
+          : item.originalName;
+
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -854,13 +863,11 @@ async function uploadSingleFile(file: File) {
                         </Tooltip>
                       )}
 
-                      {item.type === "file" && (
-                        <Tooltip title="Télécharger">
-                          <IconButton size="small" onClick={() => handleDownload(item)}>
-                            <DownloadRoundedIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      )}
+                      <Tooltip title={item.type === "folder" ? "Télécharger le dossier" : "Télécharger"}>
+                        <IconButton size="small" onClick={() => handleDownload(item)}>
+                          <DownloadRoundedIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
 
                       <Tooltip title="Renommer">
                         <IconButton

@@ -12,7 +12,7 @@ router.get("/breadcrumbs/:id", auth, files.breadcrumbs);
 router.delete("/trash/empty", auth, files.emptyTrash);
 
 router.post("/", auth, upload.single("file"), files.upload);
-
+router.get("/:id/download-folder", auth, files.downloadFolder);
 router.get("/:id/download", auth, files.download);
 router.get("/:id/preview", auth, files.preview);
 router.post("/:id/restore", auth, files.restore);
