@@ -1,4 +1,7 @@
+//FilesPage.tsx
 import { useEffect, useMemo, useState } from "react";
+import { MenuItem } from "@mui/material";
+import { moveItem } from "../services/files";
 import {
   Alert,
   Avatar,
@@ -11,12 +14,12 @@ import {
   DialogContent,
   DialogTitle,
   IconButton,
+  LinearProgress,
   Paper,
   Stack,
   TextField,
   Tooltip,
   Typography,
-  MenuItem,
 } from "@mui/material";
 
 import FolderRoundedIcon from "@mui/icons-material/FolderRounded";
@@ -135,6 +138,10 @@ export default function FilesPage() {
   const [previewFile, setPreviewFile] = useState<FileItem | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadingFileName, setUploadingFileName] = useState("");
+  const [dragActive, setDragActive] = useState(false);
 
   const [shareOpen, setShareOpen] = useState(false);
   const [shareTarget, setShareTarget] = useState<FileItem | null>(null);
@@ -148,6 +155,9 @@ export default function FilesPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [mimeFilter, setMimeFilter] = useState<MimeFilter>("all");
+
+  const [draggedItem, setDraggedItem] = useState<FileItem | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
 
   const filteredItems = useMemo(() => {
     return items.filter((item) => {
@@ -224,21 +234,75 @@ export default function FilesPage() {
     setCreateOpen(false);
     await loadFolder(currentParentId);
   }
+async function uploadSingleFile(file: File) {
+  try {
+    setError(null);
+    setUploading(true);
+    setUploadProgress(0);
+    setUploadingFileName(file.name);
 
-  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const { res, data } = await uploadFile(file, currentParentId);
+    const { res, data } = await uploadFile(file, currentParentId, (percent) => {
+      setUploadProgress(percent);
+    });
 
     if (!res.ok) {
       setError(data?.error || "Upload impossible.");
       return;
     }
 
-    e.target.value = "";
     await loadFolder(currentParentId);
+  } finally {
+    setUploading(false);
+    setUploadProgress(0);
+    setUploadingFileName("");
   }
+}
+  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    await uploadSingleFile(file);
+    e.target.value = "";
+  }
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault();
+
+    // si on déplace déjà un item interne, ne pas afficher la zone d'upload
+    if (draggedItem) return;
+
+    const hasFiles = Array.from(e.dataTransfer.types).includes("Files");
+    if (hasFiles) {
+      setDragActive(true);
+    }
+  }
+
+   function handleDragLeave(e: React.DragEvent) {
+     e.preventDefault();
+
+     if (draggedItem) return;
+
+     if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+       setDragActive(false);
+     }
+   }
+
+ async function handleDrop(e: React.DragEvent) {
+   e.preventDefault();
+
+   // si on était en train de déplacer un item interne,
+   // on ne traite PAS ici l'upload global
+   if (draggedItem) {
+     setDragActive(false);
+     return;
+   }
+
+   setDragActive(false);
+
+   const files = Array.from(e.dataTransfer.files);
+   if (!files.length) return;
+
+   await uploadSingleFile(files[0]);
+ }
 
   async function handleDelete(item: FileItem) {
     const { res, data } = await softDeleteItem(item.id);
@@ -461,9 +525,56 @@ export default function FilesPage() {
       </Box>
 
       {error && <Alert severity="error">{error}</Alert>}
+      {uploading && (
+        <Paper sx={glassCardSx}>
+          <Stack spacing={1}>
+            <Typography sx={{ fontWeight: 700 }}>
+              Upload en cours{uploadingFileName ? ` : ${uploadingFileName}` : ""}
+            </Typography>
 
-      <Paper sx={glassCardSx}>
+            <LinearProgress
+              variant="determinate"
+              value={uploadProgress}
+              sx={{ height: 10, borderRadius: 999 }}
+            />
+
+            <Typography variant="body2" color="text.secondary">
+              {uploadProgress}%
+            </Typography>
+          </Stack>
+        </Paper>
+      )}
+
+      <Paper
+        sx={{
+          ...glassCardSx,
+          border: dragActive
+            ? "2px dashed #3b82f6"
+            : (theme) => `1px solid ${theme.palette.divider}`,
+          background: dragActive
+            ? "rgba(59,130,246,0.08)"
+            : undefined,
+        }}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
         <Stack spacing={2}>
+            {dragActive && (
+              <Box
+                sx={{
+                  p: 2,
+                  borderRadius: 2,
+                  border: "2px dashed #3b82f6",
+                  textAlign: "center",
+                  bgcolor: "rgba(59,130,246,0.08)",
+                }}
+              >
+                <Typography sx={{ fontWeight: 700 }}>
+                  Déposez votre fichier ici
+                </Typography>
+              </Box>
+            )}
           <Box
             sx={{
               display: "flex",
@@ -605,7 +716,53 @@ export default function FilesPage() {
               }}
             >
               {sortedItems.map((item) => (
-                <Paper key={item.id} sx={itemCardSx}>
+                <Paper
+                  key={item.id}
+                  sx={{
+                    ...itemCardSx,
+                    border: dragOverId === item.id ? "2px solid #3b82f6" : undefined,
+                    background: dragOverId === item.id ? "rgba(59,130,246,0.1)" : undefined,
+                  }}
+                  draggable
+                  onDragStart={() => {
+                    setDraggedItem(item);
+                    setDragActive(false);
+                  }}
+                  onDragEnd={() => {
+                    setDraggedItem(null);
+                    setDragOverId(null);
+                    setDragActive(false);
+                  }}
+                  onDragOver={(e) => {
+                    if (item.type === "folder") {
+                      e.preventDefault();
+                      setDragOverId(item.id);
+                    }
+                  }}
+                  onDragLeave={(e) => {
+                    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                      setDragOverId(null);
+                    }
+                  }}
+                  onDrop={async (e) => {
+                    e.preventDefault();
+                    setDragOverId(null);
+
+                    if (uploading) return;
+                    if (!draggedItem || item.type !== "folder") return;
+                    if (draggedItem.id === item.id) return;
+
+                    const { res, data } = await moveItem(draggedItem.id, item.id);
+
+                    if (!res.ok) {
+                      setError(data?.error || "Déplacement impossible.");
+                      return;
+                    }
+
+                    setDraggedItem(null);
+                    await loadFolder(currentParentId);
+                  }}
+                >
                   <Box
                     sx={{
                       display: "grid",

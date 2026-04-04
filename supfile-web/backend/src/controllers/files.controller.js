@@ -391,7 +391,18 @@ exports.createFolder = async (req, res) => {
     const parentId = req.body.parentId || null;
 
     if (!name) return res.status(400).json({ error: "FOLDER_NAME_REQUIRED" });
+    if (parentId) {
+      const parent = await FileItem.findOne({
+        _id: parentId,
+        ownerId: req.user._id,
+        deletedAt: null,
+        type: "folder",
+      }).select("_id");
 
+      if (!parent) {
+        return res.status(400).json({ error: "INVALID_PARENT_FOLDER" });
+      }
+    }
     const folder = await FileItem.create({
       ownerId: req.user._id,
       type: "folder",
@@ -454,10 +465,13 @@ exports.move = async (req, res) => {
       _id: req.params.id,
       ownerId,
       deletedAt: null,
-    }).select("_id type");
+    }).select("_id type parentId");
 
     if (!item) return res.status(404).json({ error: "NOT_FOUND" });
 
+    if (String(item.parentId || "") === String(targetParentId || "")) {
+      return res.json({ ok: true, unchanged: true });
+    }
     // 2) si parentId fourni, vérifier que c'est un folder du user
     if (targetParentId) {
       const parent = await FileItem.findOne({
@@ -477,11 +491,6 @@ exports.move = async (req, res) => {
       // 4) empêcher cycle : si item est un folder, on remonte les parents du target
       if (item.type === "folder") {
         let currentParentId = parent.parentId ? String(parent.parentId) : null;
-
-        // targetParentId lui-même est déjà connu, on le check aussi
-        if (String(targetParentId) === String(item._id)) {
-          return res.status(400).json({ error: "CYCLE_DETECTED" });
-        }
 
         while (currentParentId) {
           if (currentParentId === String(item._id)) {
@@ -508,7 +517,22 @@ exports.move = async (req, res) => {
       { $set: { parentId: targetParentId } }
     );
 
-    return res.json({ ok: true });
+    const updated = await FileItem.findOne({
+  _id: item._id,
+  ownerId,
+  deletedAt: null,
+}).select("_id type originalName parentId updatedAt");
+
+return res.json({
+  ok: true,
+  item: {
+    id: updated._id,
+    type: updated.type,
+    originalName: updated.originalName,
+    parentId: updated.parentId,
+    updatedAt: updated.updatedAt,
+  },
+});
   } catch (err) {
     return res.status(500).json({ error: "MOVE_FAILED", message: err.message });
   }
@@ -641,3 +665,4 @@ exports.emptyTrash = async (req, res) => {
     return res.status(500).json({ error: "EMPTY_TRASH_FAILED", message: err.message });
   }
 };
+
