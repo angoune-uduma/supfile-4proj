@@ -37,4 +37,23 @@ passport.use(
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
       callbackURL: "http://localhost:4000/auth/oauth/google/callback",
     },
-    async (ac
+    async (accessToken, refreshToken, profile, done) => {
+      try {
+        let user = await User.findOne({ provider: "google", providerId: profile.id });
+        if (!user) {
+          user = await User.create({
+            provider: "google",
+            providerId: profile.id,
+            email: profile.emails?.[0]?.value,
+            avatarUrl: profile.photos?.[0]?.value || null,
+          });
+        }
+        return done(null, user);
+      } catch (err) {
+        return done(err, null);
+      }
+    }
+  )
+);
+
+module.exports = passport;
