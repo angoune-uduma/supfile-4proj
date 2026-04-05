@@ -56,10 +56,7 @@ function AppLayout({ mode, toggleTheme }: AppProps) {
 
           <Route path="/shared" element={<SharedPage />} />
           <Route path="/trash" element={<TrashPage />} />
-          <Route
-            path="/settings"
-            element={<Placeholder title="Paramètres" />}
-          />
+
           <Route path="/files" element={<FilesPage />} />
 
           {/* fallback dans l'app */}

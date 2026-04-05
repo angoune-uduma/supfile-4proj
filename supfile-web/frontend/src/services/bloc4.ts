@@ -1,3 +1,4 @@
+//frontend/src/pages/services/bloc4.ts
 import { apiFetch } from "./api";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
