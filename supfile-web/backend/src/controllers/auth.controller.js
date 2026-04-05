@@ -242,3 +242,80 @@ exports.githubCallback = async (req, res) => {
     return res.status(500).json({ error: "OAUTH_FAILED", message: err.message });
   }
 };
+
+// -------------------- GOOGLE OAUTH START --------------------
+exports.googleStart = (req, res) => {
+  const params = new URLSearchParams({
+    client_id: process.env.GOOGLE_CLIENT_ID,
+    redirect_uri: "http://localhost:4000/auth/oauth/google/callback",
+    response_type: "code",
+    scope: "openid email profile",
+    access_type: "offline",
+  });
+
+  return res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
+};
+
+// -------------------- GOOGLE OAUTH CALLBACK --------------------
+exports.googleCallback = async (req, res) => {
+  try {
+    const { code } = req.query;
+    if (!code) return res.status(400).json({ error: "MISSING_CODE" });
+
+    // 1) échange code -> token Google
+    const tokenResp = await axios.post("https://oauth2.googleapis.com/token", {
+      code,
+      client_id: process.env.GOOGLE_CLIENT_ID,
+      client_secret: process.env.GOOGLE_CLIENT_SECRET,
+      redirect_uri: "http://localhost:4000/auth/oauth/google/callback",
+      grant_type: "authorization_code",
+    });
+
+    const { access_token } = tokenResp.data;
+    if (!access_token) return res.status(401).json({ error: "GOOGLE_TOKEN_ERROR" });
+
+    // 2) récupère le profil
+    const meResp = await axios.get("https://www.googleapis.com/oauth2/v2/userinfo", {
+      headers: { Authorization: `Bearer ${access_token}` },
+    });
+
+    const { id: googleId, email, picture } = meResp.data;
+    if (!email) return res.status(400).json({ error: "NO_EMAIL_FROM_GOOGLE" });
+
+    // 3) find or create user
+    let user = await User.findOne({ email });
+    if (!user) {
+      user = await User.create({
+        email,
+        passwordHash: null,
+        provider: "google",
+        providerId: googleId,
+        avatarUrl: picture || null,
+      });
+    } else {
+      user.providerId = user.providerId || googleId;
+      await user.save();
+    }
+
+    // 4) tokens
+    const accessToken = signAccessToken(user);
+    const refreshToken = signRefreshToken(user);
+
+    await RefreshToken.create({
+      userId: user._id,
+      tokenHash: sha256(refreshToken),
+      expiresAt: addDays(30),
+      revokedAt: null,
+    });
+
+    // 5) redirection vers frontend
+    const redirectUrl =
+      `${process.env.FRONTEND_URL}/oauth/success` +
+      `?accessToken=${encodeURIComponent(accessToken)}` +
+      `&refreshToken=${encodeURIComponent(refreshToken)}`;
+
+    return res.redirect(redirectUrl);
+  } catch (err) {
+    return res.status(500).json({ error: "OAUTH_FAILED", message: err.message });
+  }
+};
