@@ -10,7 +10,7 @@ import RegisterPage from "./pages/auth/RegisterPage";
 import AuthSuccess from "./pages/auth/AuthSuccess";
 import RequireAuth from "./components/auth/RequireAuth";
 
-import FilesPage from "./pages/FilesPage";
+
 
 type AppProps = {
   mode: "light" | "dark";
