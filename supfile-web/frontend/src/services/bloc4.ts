@@ -90,3 +90,9 @@ export async function accessPublicShare(token: string, password?: string) {
     downloadUrl: data?.downloadUrl ? `${API_URL}${data.downloadUrl}` : null,
   };
 }
+export async function getTrashCount() {
+  const { res, data } = await apiFetch("/dashboard/trash-count", { method: "GET" });
+  if (!res.ok) throw new Error(pickError(data, "Get trash count failed"));
+  return Number(data?.count || 0);
+}
+

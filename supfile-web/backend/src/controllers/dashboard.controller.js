@@ -106,3 +106,20 @@ exports.activeShares = async (req, res) => {
     return res.status(500).json({ error: "DASHBOARD_ACTIVE_SHARES_FAILED", message: err.message });
   }
 };
+exports.trashCount = async (req, res) => {
+  try {
+    if (!req.user?._id) return res.status(401).json({ error: "UNAUTHORIZED" });
+
+    const count = await FileItem.countDocuments({
+      ownerId: req.user._id,
+      deletedAt: { $ne: null },
+    });
+
+    return res.json({ ok: true, count });
+  } catch (err) {
+    return res.status(500).json({
+      error: "DASHBOARD_TRASH_COUNT_FAILED",
+      message: err.message,
+    });
+  }
+};

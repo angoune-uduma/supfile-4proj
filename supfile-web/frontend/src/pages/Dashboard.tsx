@@ -5,7 +5,9 @@ import {
   getDashboardRecent,
   getDashboardUsage,
   getSharesWithMe,
+  getTrashCount,
 } from "../services/bloc4";
+
 
 import {
   Box,
@@ -108,6 +110,8 @@ export default function Dashboard() {
 
   const [breakdown, setBreakdown] = useState<Array<{ label: string; gb: number; iconKey: string }>>([]);
 
+  const [trashCount, setTrashCount] = useState<number>(0);
+
   const [recentFiles, setRecentFiles] = useState<
     Array<{ name: string; type: string; size: string; modified: string }>
   >([]);
@@ -115,6 +119,7 @@ export default function Dashboard() {
   const [recentShares, setRecentShares] = useState<
     Array<{ target: string; item: string; expires: string }>
   >([]);
+
 
   useEffect(() => {
     (async () => {
@@ -175,6 +180,8 @@ export default function Dashboard() {
             expires: "—",
           }))
         );
+        const trash = await getTrashCount();
+        setTrashCount(trash);
       } catch (e: any) {
         setErr(e?.message || "Erreur lors du chargement du dashboard.");
       }
@@ -393,7 +400,10 @@ export default function Dashboard() {
             />
             <StatCard title="Fichiers récents" value={`${recentFiles.length}`} pill="Dernières modifications" />
             <StatCard title="Liens de partage actifs" value={`${linksActive}`} />
-            <StatCard title="Corbeille" value="0 élément" />
+            <StatCard
+                  title="Corbeille"
+                  value={`${trashCount} ${trashCount > 1 ? "éléments" : "élément(s)"}`}
+                />
           </Stack>
         </Box>
       </Box>
