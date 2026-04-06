@@ -142,7 +142,10 @@ export default function ProfilePage() {
     try {
       const payload: { email?: string; avatarUrl?: string | null } = {};
 
-      if (email?.trim()) payload.email = email.trim();
+      if (me?.provider === "local" && email?.trim()) {
+        payload.email = email.trim();
+      }
+
       payload.avatarUrl = avatarUrl?.trim() ? avatarUrl.trim() : null;
 
       const { res, data } = await apiFetch("/user/me", {
@@ -205,6 +208,17 @@ export default function ProfilePage() {
           nav("/login", { replace: true });
           return;
         }
+
+        if (data?.error === "INVALID_OLD_PASSWORD") {
+          setPasswordError("L'ancien mot de passe est incorrect.");
+          return;
+        }
+
+        if (data?.error === "OAUTH_ACCOUNT_NO_PASSWORD") {
+          setPasswordError("Ce compte ne possède pas de mot de passe local.");
+          return;
+        }
+
         setPasswordError(data?.error || "Erreur mise à jour mot de passe.");
         return;
       }
@@ -322,6 +336,12 @@ export default function ProfilePage() {
               size="small"
               sx={inputSx}
               autoComplete="email"
+              disabled={me?.provider !== "local"}
+              helperText={
+                me?.provider !== "local"
+                  ? `L’adresse email est gérée par ${me?.provider}.`
+                  : undefined
+              }
             />
 
             <TextField
