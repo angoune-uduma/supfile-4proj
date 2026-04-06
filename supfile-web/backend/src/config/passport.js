@@ -8,7 +8,7 @@ passport.use(
     {
       clientID: process.env.GITHUB_CLIENT_ID,
       clientSecret: process.env.GITHUB_CLIENT_SECRET,
-      callbackURL: "http://localhost:4000/auth/oauth/github/callback",
+      callbackURL: process.env.GITHUB_CALLBACK_URL,
       scope: ["user:email"],
     },
     async (accessToken, refreshToken, profile, done) => {
@@ -35,6 +35,28 @@ passport.use(
     {
       clientID: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      callbackURL: "http://localhost:4000/auth/oauth/google/callback",
+      callbackURL: process.env.GOOGLE_CALLBACK_URL,
     },
-    async (ac
+    async (accessToken, refreshToken, profile, done) => {
+      try {
+        let user = await User.findOne({
+          provider: "google",
+          providerId: profile.id,
+        });
+
+        if (!user) {
+          user = await User.create({
+            provider: "google",
+            providerId: profile.id,
+            email: profile.emails?.[0]?.value,
+            avatarUrl: profile.photos?.[0]?.value || null,
+          });
+        }
+
+        return done(null, user);
+      } catch (err) {
+        return done(err, null);
+      }
+    }
+  )
+);

@@ -12,11 +12,11 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   const handleGithubLogin = () => {
-    window.location.href = "http://localhost:4000/auth/oauth/github";
+    window.location.href = `${API_URL}/auth/oauth/github`;
   };
 
   const handleGoogleLogin = () => {
-    window.location.href = "http://localhost:4000/auth/oauth/google";
+    window.location.href = `${API_URL}/auth/oauth/google` ;
   };
 
   async function onSubmit(e: React.FormEvent) {
