@@ -20,7 +20,7 @@ function hashPassword(password) {
 }
 
 function isExpired(expiresAt) {
-  return !!expiresAt && new Date(expiresAt).getTime() < Date.now();
+  return !!expiresAt && new Date(expiresAt).getTime() <= Date.now();
 }
 
 exports.createPublic = async (req, res) => {
@@ -31,6 +31,19 @@ exports.createPublic = async (req, res) => {
 
     if (!nodeId) {
       return res.status(400).json({ error: "NODE_ID_REQUIRED" });
+    }
+    let parsedExpiresAt = null;
+
+    if (expiresAt) {
+      parsedExpiresAt = new Date(expiresAt);
+
+      if (Number.isNaN(parsedExpiresAt.getTime())) {
+        return res.status(400).json({ error: "INVALID_EXPIRES_AT" });
+      }
+
+      if (parsedExpiresAt.getTime() <= Date.now()) {
+        return res.status(400).json({ error: "EXPIRES_AT_MUST_BE_FUTURE" });
+      }
     }
 
     const item = await FileItem.findOne({
@@ -52,7 +65,7 @@ exports.createPublic = async (req, res) => {
       mode: "public",
       token,
       password: password ? hashPassword(password) : null,
-      expiresAt: expiresAt ? new Date(expiresAt) : null,
+      expiresAt: parsedExpiresAt,
       allowDownload: true,
     });
 

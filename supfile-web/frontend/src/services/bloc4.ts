@@ -4,7 +4,29 @@ import { apiFetch } from "./api";
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
 function pickError(data: any, fallback: string) {
-  return data?.error || data?.message || fallback;
+  const error = data?.error || data?.message;
+
+  if (error === "SHARE_EXPIRED") {
+    return "Ce lien de partage a expiré.";
+  }
+
+  if (error === "INVALID_PASSWORD") {
+    return "Le mot de passe est incorrect.";
+  }
+
+  if (error === "PASSWORD_REQUIRED") {
+    return "Un mot de passe est requis pour accéder à ce fichier.";
+  }
+
+  if (error === "EXPIRES_AT_MUST_BE_FUTURE") {
+    return "La date d'expiration doit être dans le futur.";
+  }
+
+  if (error === "INVALID_EXPIRES_AT") {
+    return "La date d'expiration est invalide.";
+  }
+
+  return error || fallback;
 }
 
 export async function getDashboardUsage() {
