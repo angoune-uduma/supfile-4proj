@@ -165,6 +165,7 @@ export default function ProfilePage() {
 
       setProfileOk("Profil mis à jour ✅");
       await loadMe();
+      window.dispatchEvent(new Event("profile-updated"));
     } catch {
       setProfileError("Erreur serveur.");
     } finally {
