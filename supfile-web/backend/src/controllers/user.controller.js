@@ -10,7 +10,7 @@ const User = require("../models/User");
 exports.me = async (req, res) => {
   try {
     const user = await User.findById(req.user._id).select(
-      "email avatarUrl avatarMeta createdAt"
+      "email avatarUrl avatarMeta createdAt provider"
     );
 
     if (!user) {
@@ -23,6 +23,7 @@ exports.me = async (req, res) => {
       avatarUrl: user.avatarUrl || null,
       avatarMeta: user.avatarMeta || null,
       createdAt: user.createdAt,
+      provider: user.provider,
     });
   } catch (err) {
     return res.status(500).json({ error: "SERVER_ERROR" });
