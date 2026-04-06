@@ -68,6 +68,9 @@ type FileItem = {
   parentId: string | null;
   createdAt: string;
   updatedAt: string;
+  isShared?: boolean;
+  sharedBy?: string | null;
+  sharedAt?: string | null;
 };
 
 type Crumb = {
@@ -159,6 +162,7 @@ export default function FilesPage() {
 
   const [draggedItem, setDraggedItem] = useState<FileItem | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const [previewText, setPreviewText] = useState<string>("");
 
   const filteredItems = useMemo(() => {
     return items.filter((item) => {
@@ -336,6 +340,7 @@ async function uploadSingleFile(file: File) {
     try {
       setError(null);
       setPreviewLoading(true);
+      setPreviewText("");
 
       if (previewUrl) {
         URL.revokeObjectURL(previewUrl);
@@ -343,8 +348,18 @@ async function uploadSingleFile(file: File) {
       }
 
       const blob = await getPreviewBlob(item.id);
-      const objectUrl = URL.createObjectURL(blob);
 
+      if (
+        item.mimeType?.startsWith("text/") ||
+        item.mimeType === "application/json"
+      ) {
+        const text = await blob.text();
+        setPreviewFile(item);
+        setPreviewText(text);
+        return;
+      }
+
+      const objectUrl = URL.createObjectURL(blob);
       setPreviewFile(item);
       setPreviewUrl(objectUrl);
     } catch (err: any) {
@@ -388,6 +403,7 @@ async function uploadSingleFile(file: File) {
     }
     setPreviewUrl(null);
     setPreviewFile(null);
+    setPreviewText("");
   }
 
   function openShareDialog(item: FileItem) {
@@ -732,7 +748,7 @@ async function uploadSingleFile(file: File) {
                     border: dragOverId === item.id ? "2px solid #3b82f6" : undefined,
                     background: dragOverId === item.id ? "rgba(59,130,246,0.1)" : undefined,
                   }}
-                  draggable
+                  draggable={!item.isShared}
                   onDragStart={() => {
                     setDraggedItem(item);
                     setDragActive(false);
@@ -754,11 +770,15 @@ async function uploadSingleFile(file: File) {
                     }
                   }}
                   onDrop={async (e) => {
+
                     e.preventDefault();
                     setDragOverId(null);
 
                     if (uploading) return;
+                    if (item.isShared) return;
+                    if (draggedItem?.isShared) return;
                     if (!draggedItem || item.type !== "folder") return;
+                     if (item.isShared) return;
                     if (draggedItem.id === item.id) return;
 
                     const { res, data } = await moveItem(draggedItem.id, item.id);
@@ -825,8 +845,12 @@ async function uploadSingleFile(file: File) {
                           label={item.type === "folder" ? "Dossier" : "Fichier"}
                           variant="outlined"
                         />
+
                         {item.type === "file" && (
                           <Chip size="small" label={formatSize(item.size)} variant="outlined" />
+                        )}
+                        {item.isShared && (
+                          <Chip size="small" label="Partagé" color="secondary" variant="outlined" />
                         )}
                         {item.type === "file" && (
                           <Chip
@@ -845,15 +869,18 @@ async function uploadSingleFile(file: File) {
                             variant="outlined"
                           />
                         )}
+
                       </Stack>
                     </Box>
 
                     <Stack direction="row" spacing={0.4}>
-                      <Tooltip title="Partager">
-                        <IconButton size="small" onClick={() => openShareDialog(item)}>
-                          <ShareRoundedIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
+                      {!item.isShared && (
+                        <Tooltip title="Partager">
+                          <IconButton size="small" onClick={() => openShareDialog(item)}>
+                            <ShareRoundedIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      )}
 
                       {item.type === "file" && (
                         <Tooltip title="Preview">
@@ -921,41 +948,88 @@ async function uploadSingleFile(file: File) {
 
         <DialogContent sx={{ minHeight: 400 }}>
           {previewLoading && (
-            <Typography color="text.secondary">Chargement de la prévisualisation...</Typography>
-          )}
-
-          {!previewLoading && previewFile && previewUrl && previewFile.mimeType?.startsWith("image/") && (
-            <img
-              src={previewUrl}
-              alt={previewFile.originalName}
-              style={{ maxWidth: "100%" }}
-            />
-          )}
-
-          {!previewLoading && previewFile && previewUrl && previewFile.mimeType === "application/pdf" && (
-            <iframe
-              src={previewUrl}
-              width="100%"
-              height="600"
-              title={previewFile.originalName}
-            />
-          )}
-
-          {!previewLoading && previewFile && previewUrl && previewFile.mimeType?.startsWith("video/") && (
-            <video controls width="100%" src={previewUrl} />
-          )}
-
-          {!previewLoading && previewFile && previewUrl && previewFile.mimeType?.startsWith("audio/") && (
-            <audio controls style={{ width: "100%" }} src={previewUrl} />
+            <Typography color="text.secondary">
+              Chargement de la prévisualisation...
+            </Typography>
           )}
 
           {!previewLoading &&
             previewFile &&
             previewUrl &&
+            previewFile.mimeType?.startsWith("image/") && (
+              <img
+                src={previewUrl}
+                alt={previewFile.originalName}
+                style={{ maxWidth: "100%" }}
+              />
+            )}
+
+          {!previewLoading &&
+            previewFile &&
+            previewUrl &&
+            previewFile.mimeType === "application/pdf" && (
+              <iframe
+                src={previewUrl}
+                width="100%"
+                height="600"
+                title={previewFile.originalName}
+              />
+            )}
+
+          {!previewLoading &&
+            previewFile &&
+            previewText &&
+            (previewFile.mimeType?.startsWith("text/") ||
+              previewFile.mimeType === "application/json") && (
+              <Box
+                sx={{
+                  p: 2,
+                  borderRadius: 2,
+                  bgcolor: "rgba(148,163,184,0.08)",
+                  border: (theme) => `1px solid ${theme.palette.divider}`,
+                  maxHeight: 600,
+                  overflow: "auto",
+                }}
+              >
+                <Typography
+                  component="pre"
+                  sx={{
+                    m: 0,
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                    fontFamily: "monospace",
+                    fontSize: 14,
+                  }}
+                >
+                  {previewText}
+                </Typography>
+              </Box>
+            )}
+
+          {!previewLoading &&
+            previewFile &&
+            previewUrl &&
+            previewFile.mimeType?.startsWith("video/") && (
+              <video controls width="100%" src={previewUrl} />
+            )}
+
+          {!previewLoading &&
+            previewFile &&
+            previewUrl &&
+            previewFile.mimeType?.startsWith("audio/") && (
+              <audio controls style={{ width: "100%" }} src={previewUrl} />
+            )}
+
+          {!previewLoading &&
+            previewFile &&
+            !previewText &&
+            previewUrl &&
             !previewFile.mimeType?.startsWith("image/") &&
             previewFile.mimeType !== "application/pdf" &&
             !previewFile.mimeType?.startsWith("video/") &&
-            !previewFile.mimeType?.startsWith("audio/") && (
+            !previewFile.mimeType?.startsWith("audio/") &&
+            !previewFile.mimeType?.startsWith("text/") &&
+            previewFile.mimeType !== "application/json" && (
               <Typography color="text.secondary">
                 Ce type de fichier n’a pas de prévisualisation intégrée.
               </Typography>
