@@ -11,6 +11,14 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const handleGithubLogin = () => {
+    window.location.href = "http://localhost:4000/auth/oauth/github";
+  };
+
+  const handleGoogleLogin = () => {
+    window.location.href = "http://localhost:4000/auth/oauth/google";
+  };
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -35,11 +43,9 @@ export default function LoginPage() {
         return;
       }
 
-      // Stockage des tokens
       localStorage.setItem("accessToken", data.accessToken);
       localStorage.setItem("refreshToken", data.refreshToken);
 
-      // Redirection dashboard
       nav("/dashboard", { replace: true });
     } catch {
       setError("Erreur serveur.");
@@ -51,7 +57,6 @@ export default function LoginPage() {
   return (
     <div className="supfile-auth">
       <div className="auth-shell">
-        {/* LEFT PANEL */}
         <section className="glass left-panel">
           <div
             style={{
@@ -78,7 +83,6 @@ export default function LoginPage() {
                 filter: "drop-shadow(0 25px 50px rgba(59,130,246,0.45))",
               }}
             />
-
             <p
               style={{
                 maxWidth: "520px",
@@ -95,12 +99,9 @@ export default function LoginPage() {
           </div>
         </section>
 
-        {/* RIGHT PANEL */}
         <section className="glass right-panel">
           <h2 className="card-title">Connexion</h2>
-          <p className="card-sub">
-            Connecte-toi pour accéder à ton espace.
-          </p>
+          <p className="card-sub">Connecte-toi pour accéder à ton espace.</p>
 
           {error && <div className="error">{error}</div>}
 
@@ -135,7 +136,6 @@ export default function LoginPage() {
               <Link className="link" to="/register">
                 Créer un compte
               </Link>
-
               <button
                 className="btn btn-primary"
                 type="submit"
@@ -144,6 +144,24 @@ export default function LoginPage() {
                 {loading ? "Connexion..." : "Se connecter"}
               </button>
             </div>
+
+            <button
+              className="btn"
+              type="button"
+              onClick={handleGithubLogin}
+              style={{ marginTop: "12px", width: "100%" }}
+            >
+              Continuer avec GitHub
+            </button>
+
+            <button
+              className="btn"
+              type="button"
+              onClick={handleGoogleLogin}
+              style={{ marginTop: "8px", width: "100%" }}
+            >
+              Continuer avec Google
+            </button>
           </form>
         </section>
       </div>
