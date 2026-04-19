@@ -1,14 +1,18 @@
-// src/App.tsx
+// frontend/src/App.tsx
 import { Routes, Route, Navigate } from "react-router-dom";
 import { Box } from "@mui/material";
+import SharedPage from "./pages/SharedPage";
+import PublicSharePage from "./pages/PublicSharePage";
 
 import Sidebar from "./components/Sidebar";
 import Dashboard from "./pages/Dashboard";
 import ProfilePage from "./pages/ProfilePage";
 import LoginPage from "./pages/auth/LoginPage";
 import RegisterPage from "./pages/auth/RegisterPage";
-import AuthSuccess from "./pages/auth/AuthSuccess";
+import FilesPage from "./pages/FilesPage";
+import TrashPage from "./pages/TrashPage";
 
+import AuthSuccess from "./pages/auth/AuthSuccess";
 import RequireAuth from "./components/auth/RequireAuth";
 
 type AppProps = {
@@ -21,7 +25,9 @@ function Placeholder({ title }: { title: string }) {
   return (
     <Box sx={{ color: "text.primary", p: 2 }}>
       <Box sx={{ fontSize: 22, fontWeight: 800, mb: 1 }}>{title}</Box>
-      <Box sx={{ color: "text.secondary" }}>Page en cours de développement.</Box>
+      <Box sx={{ color: "text.secondary" }}>
+        Page en cours de développement.
+      </Box>
     </Box>
   );
 }
@@ -43,14 +49,15 @@ function AppLayout({ mode, toggleTheme }: AppProps) {
         <Routes>
           <Route path="/dashboard" element={<Dashboard />} />
 
-          {/* ✅ nouvelle page profil */}
-          <Route path="/profile" element={<ProfilePage />} />
+          {/* page profil / paramètres */}
+          <Route path="/settings" element={<ProfilePage />} />
 
           {/* placeholders */}
-          <Route path="/files" element={<Placeholder title="Mes fichiers" />} />
-          <Route path="/shared" element={<Placeholder title="Partagés" />} />
-          <Route path="/trash" element={<Placeholder title="Corbeille" />} />
-          <Route path="/settings" element={<Placeholder title="Paramètres" />} />
+
+          <Route path="/shared" element={<SharedPage />} />
+          <Route path="/trash" element={<TrashPage />} />
+
+          <Route path="/files" element={<FilesPage />} />
 
           {/* fallback dans l'app */}
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
@@ -85,6 +92,7 @@ export default function App({ mode, toggleTheme }: AppProps) {
 
       {/* fallback global */}
       <Route path="*" element={<Navigate to="/login" replace />} />
+      <Route path="/public/:token" element={<PublicSharePage />} />
     </Routes>
   );
 }
