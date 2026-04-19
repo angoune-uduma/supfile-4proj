@@ -14,6 +14,7 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
+import type { Theme } from "@mui/material/styles";
 
 import PhotoCameraRoundedIcon from "@mui/icons-material/PhotoCameraRounded";
 
@@ -21,7 +22,7 @@ type Me = {
   id?: string;
   email: string;
   avatarUrl?: string | null;
-  avatarMeta?: any;
+  avatarMeta?: unknown;
 };
 
 export default function ProfilePage() {
@@ -51,11 +52,14 @@ export default function ProfilePage() {
     []
   );
 
-  const cardSx = (theme: any) => ({
+  const cardSx = (theme: Theme) => ({
     p: { xs: 2, md: 2.4 },
     borderRadius: 4,
     border: `1px solid ${theme.palette.divider}`,
-    bgcolor: theme.palette.mode === "dark" ? "rgba(11,16,32,0.72)" : "rgba(255,255,255,0.80)",
+    bgcolor:
+      theme.palette.mode === "dark"
+        ? "rgba(11,16,32,0.72)"
+        : "rgba(255,255,255,0.80)",
     backdropFilter: "blur(12px)",
     boxShadow:
       theme.palette.mode === "dark"
@@ -63,20 +67,30 @@ export default function ProfilePage() {
         : "0 14px 35px rgba(15,23,42,0.08)",
   });
 
-  const inputSx = (theme: any) => ({
+  const inputSx = (theme: Theme) => ({
     "& .MuiOutlinedInput-root": {
       borderRadius: 999,
-      backgroundColor: theme.palette.mode === "dark" ? "rgba(15,23,42,0.55)" : "rgba(2,6,23,0.04)",
+      backgroundColor:
+        theme.palette.mode === "dark"
+          ? "rgba(15,23,42,0.55)"
+          : "rgba(2,6,23,0.04)",
       "& fieldset": { borderColor: theme.palette.divider },
-      "&:hover fieldset": { borderColor: theme.palette.mode === "dark" ? "rgba(148,163,184,0.38)" : "rgba(15,23,42,0.20)" },
-      "&.Mui-focused fieldset": { borderColor: theme.palette.primary.main },
+      "&:hover fieldset": {
+        borderColor:
+          theme.palette.mode === "dark"
+            ? "rgba(148,163,184,0.38)"
+            : "rgba(15,23,42,0.20)",
+      },
+      "&.Mui-focused fieldset": {
+        borderColor: theme.palette.primary.main,
+      },
     },
     "& .MuiInputLabel-root": {
       color: theme.palette.text.secondary,
     },
   });
 
-  const pillBtnSx = (theme: any) => ({
+  const pillBtnSx = (_theme: Theme) => ({
     borderRadius: 999,
     textTransform: "none",
     fontWeight: 700,
@@ -121,9 +135,9 @@ export default function ProfilePage() {
     setLoading(true);
 
     try {
-      const payload: any = {};
+      const payload: { email?: string; avatarUrl?: string | null } = {};
+
       if (email?.trim()) payload.email = email.trim();
-      // on garde avatarUrl optionnel, mais on l’envoie si modifié/présent
       payload.avatarUrl = avatarUrl?.trim() ? avatarUrl.trim() : null;
 
       const { res, data } = await apiFetch("/user/me", {
@@ -158,6 +172,7 @@ export default function ProfilePage() {
       setError("Remplis tous les champs du mot de passe.");
       return;
     }
+
     if (newPassword.length < 8) {
       setError("Le nouveau mot de passe doit contenir au moins 8 caractères.");
       return;
@@ -200,7 +215,10 @@ export default function ProfilePage() {
     <Box sx={pageBg}>
       <Stack spacing={2}>
         <Box>
-          <Typography variant="h5" sx={{ fontWeight: 900, letterSpacing: "0.01em" }}>
+          <Typography
+            variant="h5"
+            sx={{ fontWeight: 900, letterSpacing: "0.01em" }}
+          >
             Mon profil
           </Typography>
           <Typography color="text.secondary" sx={{ mt: 0.4 }}>
@@ -220,7 +238,6 @@ export default function ProfilePage() {
         </Box>
 
         <Paper sx={cardSx}>
-          {/* Header: avatar + email */}
           <Box sx={{ display: "flex", gap: 2, alignItems: "center" }}>
             <Box sx={{ position: "relative" }}>
               <Avatar
@@ -228,16 +245,17 @@ export default function ProfilePage() {
                 sx={(theme) => ({
                   width: 72,
                   height: 72,
-                  bgcolor: theme.palette.mode === "dark" ? "rgba(79,124,255,0.10)" : "rgba(79,124,255,0.08)",
+                  bgcolor:
+                    theme.palette.mode === "dark"
+                      ? "rgba(79,124,255,0.10)"
+                      : "rgba(79,124,255,0.08)",
                   color: "primary.main",
                   border: `1px solid ${theme.palette.divider}`,
                 })}
               >
-                {/* fallback initial */}
                 {(displayedEmail?.[0] || "U").toUpperCase()}
               </Avatar>
 
-              {/* Bouton caméra overlay */}
               <Tooltip title="Changer l’avatar (URL)" placement="right" arrow>
                 <IconButton
                   size="small"
@@ -249,14 +267,19 @@ export default function ProfilePage() {
                     height: 34,
                     borderRadius: 999,
                     border: `1px solid ${theme.palette.divider}`,
-                    bgcolor: theme.palette.mode === "dark" ? "rgba(15,23,42,0.75)" : "rgba(255,255,255,0.85)",
+                    bgcolor:
+                      theme.palette.mode === "dark"
+                        ? "rgba(15,23,42,0.75)"
+                        : "rgba(255,255,255,0.85)",
                     backdropFilter: "blur(10px)",
                     "&:hover": {
-                      bgcolor: theme.palette.mode === "dark" ? "rgba(15,23,42,0.92)" : "rgba(255,255,255,0.95)",
+                      bgcolor:
+                        theme.palette.mode === "dark"
+                          ? "rgba(15,23,42,0.92)"
+                          : "rgba(255,255,255,0.95)",
                     },
                   })}
                   onClick={() => {
-                    // focus champ avatar (UX simple)
                     const el = document.getElementById("avatarUrlInput");
                     el?.focus();
                   }}
@@ -267,7 +290,9 @@ export default function ProfilePage() {
             </Box>
 
             <Box sx={{ minWidth: 0 }}>
-              <Typography sx={{ fontWeight: 900, fontSize: 22, lineHeight: 1.2 }}>
+              <Typography
+                sx={{ fontWeight: 900, fontSize: 22, lineHeight: 1.2 }}
+              >
                 {displayedEmail}
               </Typography>
               <Typography color="text.secondary" sx={{ mt: 0.3 }}>
@@ -278,7 +303,6 @@ export default function ProfilePage() {
 
           <Divider sx={{ my: 2 }} />
 
-          {/* Form profil */}
           <Stack spacing={1.6}>
             <TextField
               label="Email"
@@ -290,7 +314,6 @@ export default function ProfilePage() {
               autoComplete="email"
             />
 
-            {/* Avatar URL mais “discret” : label caché / placeholder */}
             <TextField
               id="avatarUrlInput"
               label="Avatar URL (optionnel)"
@@ -304,11 +327,7 @@ export default function ProfilePage() {
             />
 
             <Stack direction="row" spacing={1} justifyContent="flex-end">
-              <Button
-                variant="outlined"
-                sx={pillBtnSx}
-                onClick={() => nav(-1)}
-              >
+              <Button variant="outlined" sx={pillBtnSx} onClick={() => nav(-1)}>
                 Retour
               </Button>
               <Button
@@ -331,7 +350,6 @@ export default function ProfilePage() {
 
           <Divider sx={{ my: 2.2 }} />
 
-          {/* Section mot de passe */}
           <Stack spacing={1.6}>
             <Typography sx={{ fontWeight: 900, fontSize: 18 }}>
               Sécurité
@@ -366,17 +384,25 @@ export default function ProfilePage() {
                 color="secondary"
                 sx={(theme) => ({
                   ...pillBtnSx(theme),
-                  bgcolor: theme.palette.mode === "dark" ? "rgba(148,163,184,0.12)" : "rgba(2,6,23,0.06)",
+                  bgcolor:
+                    theme.palette.mode === "dark"
+                      ? "rgba(148,163,184,0.12)"
+                      : "rgba(2,6,23,0.06)",
                   color: theme.palette.text.primary,
                   border: `1px solid ${theme.palette.divider}`,
                   "&:hover": {
-                    bgcolor: theme.palette.mode === "dark" ? "rgba(148,163,184,0.16)" : "rgba(2,6,23,0.08)",
+                    bgcolor:
+                      theme.palette.mode === "dark"
+                        ? "rgba(148,163,184,0.16)"
+                        : "rgba(2,6,23,0.08)",
                   },
                 })}
                 onClick={onChangePassword}
                 disabled={loadingPwd}
               >
-                {loadingPwd ? "Mise à jour..." : "Mettre à jour le mot de passe"}
+                {loadingPwd
+                  ? "Mise à jour..."
+                  : "Mettre à jour le mot de passe"}
               </Button>
             </Stack>
           </Stack>

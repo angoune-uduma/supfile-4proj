@@ -8,8 +8,9 @@ import ProfilePage from "./pages/ProfilePage";
 import LoginPage from "./pages/auth/LoginPage";
 import RegisterPage from "./pages/auth/RegisterPage";
 import AuthSuccess from "./pages/auth/AuthSuccess";
-
 import RequireAuth from "./components/auth/RequireAuth";
+
+
 
 type AppProps = {
   mode: "light" | "dark";
@@ -43,14 +44,13 @@ function AppLayout({ mode, toggleTheme }: AppProps) {
         <Routes>
           <Route path="/dashboard" element={<Dashboard />} />
 
-          {/* ✅ nouvelle page profil */}
-          <Route path="/profile" element={<ProfilePage />} />
+          {/* page profil / paramètres */}
+          <Route path="/settings" element={<ProfilePage />} />
 
-          {/* placeholders */}
+          {/* autres pages */}
           <Route path="/files" element={<Placeholder title="Mes fichiers" />} />
           <Route path="/shared" element={<Placeholder title="Partagés" />} />
           <Route path="/trash" element={<Placeholder title="Corbeille" />} />
-          <Route path="/settings" element={<Placeholder title="Paramètres" />} />
 
           {/* fallback dans l'app */}
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
