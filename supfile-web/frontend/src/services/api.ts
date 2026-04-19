@@ -1,31 +1,31 @@
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
 // ---- token helpers
-export function getAccessToken() {
+export function getAccessToken(): string | null {
   return localStorage.getItem("accessToken");
 }
 
-export function getRefreshToken() {
+export function getRefreshToken(): string | null {
   return localStorage.getItem("refreshToken");
 }
 
-export function setTokens(accessToken, refreshToken) {
+export function setTokens(accessToken: string, refreshToken?: string | null): void {
   localStorage.setItem("accessToken", accessToken);
   if (refreshToken) {
     localStorage.setItem("refreshToken", refreshToken);
   }
 }
 
-export function clearTokens() {
+export function clearTokens(): void {
   localStorage.removeItem("accessToken");
   localStorage.removeItem("refreshToken");
 }
 
 // ---- single refresh shared by concurrent requests
-let refreshPromise = null;
+let refreshPromise: Promise<string | null> | null = null;
 
 // ---- refresh call
-async function refreshAccessToken() {
+async function refreshAccessToken(): Promise<string | null> {
   if (refreshPromise) return refreshPromise;
 
   refreshPromise = (async () => {
@@ -47,7 +47,7 @@ async function refreshAccessToken() {
       }
 
       setTokens(data.accessToken, data.refreshToken);
-      return data.accessToken;
+      return data.accessToken as string;
     } catch {
       clearTokens();
       return null;
@@ -59,9 +59,14 @@ async function refreshAccessToken() {
   return refreshPromise;
 }
 
+// ---- types
+interface ApiFetchOptions extends RequestInit {
+  isFormData?: boolean;
+}
+
 // ---- helper pour construire les headers
-function buildHeaders(options = {}, token = null) {
-  const headers = new Headers(options.headers || {});
+function buildHeaders(options: ApiFetchOptions = {}, token: string | null = null): Headers {
+  const headers = new Headers((options.headers as HeadersInit) || {});
 
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
@@ -77,7 +82,10 @@ function buildHeaders(options = {}, token = null) {
 }
 
 // ---- apiFetch wrapper (auto attach bearer + auto refresh on 401)
-export async function apiFetch(path, options = {}) {
+export async function apiFetch(
+  path: string,
+  options: ApiFetchOptions = {}
+): Promise<{ res: Response; data: any }> {
   const token = getAccessToken();
 
   let res = await fetch(`${API_URL}${path}`, {

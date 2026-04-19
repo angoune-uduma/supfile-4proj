@@ -19,6 +19,8 @@ import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
 import FolderRoundedIcon from "@mui/icons-material/FolderRounded";
 import InsertDriveFileRoundedIcon from "@mui/icons-material/InsertDriveFileRounded";
 import PersonRoundedIcon from "@mui/icons-material/PersonRounded";
+import VisibilityRoundedIcon from "@mui/icons-material/VisibilityRounded";
+import DownloadRoundedIcon from "@mui/icons-material/DownloadRounded";
 
 import { getSharesWithMe } from "../services/bloc4";
 
@@ -57,6 +59,44 @@ export default function SharedPage() {
     load();
   }, []);
 
+  // ✅ ouvrir fichier partagé
+  async function openFile(share: ShareWithMe) {
+    try {
+      const token = localStorage.getItem("accessToken");
+      const url = `${import.meta.env.VITE_API_URL}/shares/internal/${share.id}/file?disposition=inline`;
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Erreur lors du chargement");
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      window.open(blobUrl, "_blank");
+    } catch (e: any) {
+      setErr(e?.message || "Impossible d'ouvrir le fichier.");
+    }
+  }
+
+  // ✅ télécharger fichier partagé
+  async function downloadFile(share: ShareWithMe) {
+    try {
+      const token = localStorage.getItem("accessToken");
+      const url = `${import.meta.env.VITE_API_URL}/shares/internal/${share.id}/file?disposition=attachment`;
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Erreur lors du téléchargement");
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = share.name;
+      a.click();
+      URL.revokeObjectURL(blobUrl);
+    } catch (e: any) {
+      setErr(e?.message || "Impossible de télécharger le fichier.");
+    }
+  }
+
   return (
     <Stack spacing={2}>
       <Box sx={{ display: "flex", justifyContent: "space-between", gap: 2, flexWrap: "wrap" }}>
@@ -76,7 +116,7 @@ export default function SharedPage() {
 
         <Stack direction="row" spacing={1} alignItems="center">
           <Chip label={`${items.length} élément(s)`} variant="outlined" />
-          <Tooltip title="Rafraîchir" arrow>
+          <Tooltip title="Rafraîchir">
             <IconButton onClick={load}>
               <RefreshRoundedIcon />
             </IconButton>
@@ -91,13 +131,14 @@ export default function SharedPage() {
               <TableCell>Nom</TableCell>
               <TableCell>Partagé par</TableCell>
               <TableCell align="right">Date</TableCell>
+              <TableCell align="right">Actions</TableCell>
             </TableRow>
           </TableHead>
 
           <TableBody>
             {items.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={3}>
+                <TableCell colSpan={4}>
                   <Typography color="text.secondary">
                     Aucun élément partagé pour le moment.
                   </Typography>
@@ -106,6 +147,7 @@ export default function SharedPage() {
             ) : (
               items.map((s) => {
                 const isFolder = s.nodeType === "folder";
+
                 return (
                   <TableRow key={s.id}>
                     <TableCell>
@@ -136,6 +178,24 @@ export default function SharedPage() {
                       <Typography sx={{ fontWeight: 700 }}>
                         {formatDate(s.createdAt)}
                       </Typography>
+                    </TableCell>
+
+                    <TableCell align="right">
+                      {!isFolder && (
+                        <Stack direction="row" spacing={1} justifyContent="flex-end">
+                          <Tooltip title="Ouvrir">
+                            <IconButton size="small" onClick={() => openFile(s)}>
+                              <VisibilityRoundedIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+
+                          <Tooltip title="Télécharger">
+                            <IconButton size="small" onClick={() => downloadFile(s)}>
+                              <DownloadRoundedIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        </Stack>
+                      )}
                     </TableCell>
                   </TableRow>
                 );
