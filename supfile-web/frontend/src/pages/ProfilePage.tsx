@@ -14,6 +14,7 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
+import type { Theme } from "@mui/material/styles";
 
 import PhotoCameraRoundedIcon from "@mui/icons-material/PhotoCameraRounded";
 
@@ -21,7 +22,8 @@ type Me = {
   id?: string;
   email: string;
   avatarUrl?: string | null;
-  avatarMeta?: any;
+  avatarMeta?: unknown;
+   provider?: "local" | "google" | "github";
 };
 
 export default function ProfilePage() {
@@ -39,8 +41,11 @@ export default function ProfilePage() {
 
   const [loading, setLoading] = useState(false);
   const [loadingPwd, setLoadingPwd] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [ok, setOk] = useState<string | null>(null);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [profileOk, setProfileOk] = useState<string | null>(null);
+
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordOk, setPasswordOk] = useState<string | null>(null);
 
   // Styles "glass" cohérents dark/light
   const pageBg = useMemo(
@@ -51,11 +56,14 @@ export default function ProfilePage() {
     []
   );
 
-  const cardSx = (theme: any) => ({
+  const cardSx = (theme: Theme) => ({
     p: { xs: 2, md: 2.4 },
     borderRadius: 4,
     border: `1px solid ${theme.palette.divider}`,
-    bgcolor: theme.palette.mode === "dark" ? "rgba(11,16,32,0.72)" : "rgba(255,255,255,0.80)",
+    bgcolor:
+      theme.palette.mode === "dark"
+        ? "rgba(11,16,32,0.72)"
+        : "rgba(255,255,255,0.80)",
     backdropFilter: "blur(12px)",
     boxShadow:
       theme.palette.mode === "dark"
@@ -63,28 +71,38 @@ export default function ProfilePage() {
         : "0 14px 35px rgba(15,23,42,0.08)",
   });
 
-  const inputSx = (theme: any) => ({
+  const inputSx = (theme: Theme) => ({
     "& .MuiOutlinedInput-root": {
       borderRadius: 999,
-      backgroundColor: theme.palette.mode === "dark" ? "rgba(15,23,42,0.55)" : "rgba(2,6,23,0.04)",
+      backgroundColor:
+        theme.palette.mode === "dark"
+          ? "rgba(15,23,42,0.55)"
+          : "rgba(2,6,23,0.04)",
       "& fieldset": { borderColor: theme.palette.divider },
-      "&:hover fieldset": { borderColor: theme.palette.mode === "dark" ? "rgba(148,163,184,0.38)" : "rgba(15,23,42,0.20)" },
-      "&.Mui-focused fieldset": { borderColor: theme.palette.primary.main },
+      "&:hover fieldset": {
+        borderColor:
+          theme.palette.mode === "dark"
+            ? "rgba(148,163,184,0.38)"
+            : "rgba(15,23,42,0.20)",
+      },
+      "&.Mui-focused fieldset": {
+        borderColor: theme.palette.primary.main,
+      },
     },
     "& .MuiInputLabel-root": {
       color: theme.palette.text.secondary,
     },
   });
 
-  const pillBtnSx = (theme: any) => ({
+  const pillBtnSx = (_theme: Theme) => ({
     borderRadius: 999,
     textTransform: "none",
     fontWeight: 700,
   });
 
   async function loadMe() {
-    setError(null);
-    setOk(null);
+    setProfileError(null);
+    setProfileOk(null);
 
     const { res, data } = await apiFetch("/user/me", { method: "GET" });
 
@@ -94,15 +112,16 @@ export default function ProfilePage() {
         nav("/login", { replace: true });
         return;
       }
-      setError(data?.error || "Impossible de récupérer le profil.");
+      setProfileError(data?.error || "Impossible de récupérer le profil.");
       return;
     }
 
     const next: Me = {
-      id: data?.id,
+        id: data?.id || data?._id,
       email: data?.email,
       avatarUrl: data?.avatarUrl ?? null,
       avatarMeta: data?.avatarMeta,
+        provider: data?.provider,
     };
 
     setMe(next);
@@ -116,14 +135,17 @@ export default function ProfilePage() {
   }, []);
 
   async function onSave() {
-    setError(null);
-    setOk(null);
+    setProfileError(null);
+    setProfileOk(null);
     setLoading(true);
 
     try {
-      const payload: any = {};
-      if (email?.trim()) payload.email = email.trim();
-      // on garde avatarUrl optionnel, mais on l’envoie si modifié/présent
+      const payload: { email?: string; avatarUrl?: string | null } = {};
+
+      if (me?.provider === "local" && email?.trim()) {
+        payload.email = email.trim();
+      }
+
       payload.avatarUrl = avatarUrl?.trim() ? avatarUrl.trim() : null;
 
       const { res, data } = await apiFetch("/user/me", {
@@ -137,29 +159,36 @@ export default function ProfilePage() {
           nav("/login", { replace: true });
           return;
         }
-        setError(data?.error || "Erreur lors de la mise à jour du profil.");
+        setProfileError(data?.error || "Erreur lors de la mise à jour du profil.");
         return;
       }
 
-      setOk("Profil mis à jour ✅");
+      setProfileOk("Profil mis à jour ✅");
       await loadMe();
+      window.dispatchEvent(new Event("profile-updated"));
     } catch {
-      setError("Erreur serveur.");
+      setProfileError("Erreur serveur.");
     } finally {
       setLoading(false);
     }
   }
 
   async function onChangePassword() {
-    setError(null);
-    setOk(null);
+    setPasswordError(null);
+    setPasswordOk(null);
 
-    if (!oldPassword || !newPassword) {
-      setError("Remplis tous les champs du mot de passe.");
+    if (!oldPassword.trim()) {
+      setPasswordError("L'ancien mot de passe est obligatoire.");
       return;
     }
-    if (newPassword.length < 8) {
-      setError("Le nouveau mot de passe doit contenir au moins 8 caractères.");
+
+    if (!newPassword.trim()) {
+      setPasswordError("Le nouveau mot de passe est obligatoire.");
+      return;
+    }
+
+    if (newPassword.trim().length < 8) {
+      setPasswordError("Le nouveau mot de passe doit contenir au moins 8 caractères.");
       return;
     }
 
@@ -180,15 +209,26 @@ export default function ProfilePage() {
           nav("/login", { replace: true });
           return;
         }
-        setError(data?.error || "Erreur mise à jour mot de passe.");
+
+        if (data?.error === "INVALID_OLD_PASSWORD") {
+          setPasswordError("L'ancien mot de passe est incorrect.");
+          return;
+        }
+
+        if (data?.error === "OAUTH_ACCOUNT_NO_PASSWORD") {
+          setPasswordError("Ce compte ne possède pas de mot de passe local.");
+          return;
+        }
+
+        setPasswordError(data?.error || "Erreur mise à jour mot de passe.");
         return;
       }
 
-      setOk("Mot de passe mis à jour ✅");
+      setPasswordOk("Mot de passe mis à jour ✅");
       setOldPassword("");
       setNewPassword("");
     } catch {
-      setError("Erreur serveur.");
+      setPasswordError("Erreur serveur.");
     } finally {
       setLoadingPwd(false);
     }
@@ -200,27 +240,29 @@ export default function ProfilePage() {
     <Box sx={pageBg}>
       <Stack spacing={2}>
         <Box>
-          <Typography variant="h5" sx={{ fontWeight: 900, letterSpacing: "0.01em" }}>
+          <Typography
+            variant="h5"
+            sx={{ fontWeight: 900, letterSpacing: "0.01em" }}
+          >
             Mon profil
           </Typography>
           <Typography color="text.secondary" sx={{ mt: 0.4 }}>
-            Gère ton email, ton avatar et ton mot de passe.
+            Gère les informations de ton compte.
           </Typography>
 
-          {error && (
+          {profileError && (
             <Typography sx={{ mt: 1, color: "error.main", fontWeight: 700 }}>
-              {error}
+              {profileError}
             </Typography>
           )}
-          {ok && (
+          {profileOk && (
             <Typography sx={{ mt: 1, color: "success.main", fontWeight: 700 }}>
-              {ok}
+              {profileOk}
             </Typography>
           )}
         </Box>
 
         <Paper sx={cardSx}>
-          {/* Header: avatar + email */}
           <Box sx={{ display: "flex", gap: 2, alignItems: "center" }}>
             <Box sx={{ position: "relative" }}>
               <Avatar
@@ -228,16 +270,17 @@ export default function ProfilePage() {
                 sx={(theme) => ({
                   width: 72,
                   height: 72,
-                  bgcolor: theme.palette.mode === "dark" ? "rgba(79,124,255,0.10)" : "rgba(79,124,255,0.08)",
+                  bgcolor:
+                    theme.palette.mode === "dark"
+                      ? "rgba(79,124,255,0.10)"
+                      : "rgba(79,124,255,0.08)",
                   color: "primary.main",
                   border: `1px solid ${theme.palette.divider}`,
                 })}
               >
-                {/* fallback initial */}
                 {(displayedEmail?.[0] || "U").toUpperCase()}
               </Avatar>
 
-              {/* Bouton caméra overlay */}
               <Tooltip title="Changer l’avatar (URL)" placement="right" arrow>
                 <IconButton
                   size="small"
@@ -249,14 +292,19 @@ export default function ProfilePage() {
                     height: 34,
                     borderRadius: 999,
                     border: `1px solid ${theme.palette.divider}`,
-                    bgcolor: theme.palette.mode === "dark" ? "rgba(15,23,42,0.75)" : "rgba(255,255,255,0.85)",
+                    bgcolor:
+                      theme.palette.mode === "dark"
+                        ? "rgba(15,23,42,0.75)"
+                        : "rgba(255,255,255,0.85)",
                     backdropFilter: "blur(10px)",
                     "&:hover": {
-                      bgcolor: theme.palette.mode === "dark" ? "rgba(15,23,42,0.92)" : "rgba(255,255,255,0.95)",
+                      bgcolor:
+                        theme.palette.mode === "dark"
+                          ? "rgba(15,23,42,0.92)"
+                          : "rgba(255,255,255,0.95)",
                     },
                   })}
                   onClick={() => {
-                    // focus champ avatar (UX simple)
                     const el = document.getElementById("avatarUrlInput");
                     el?.focus();
                   }}
@@ -267,7 +315,9 @@ export default function ProfilePage() {
             </Box>
 
             <Box sx={{ minWidth: 0 }}>
-              <Typography sx={{ fontWeight: 900, fontSize: 22, lineHeight: 1.2 }}>
+              <Typography
+                sx={{ fontWeight: 900, fontSize: 22, lineHeight: 1.2 }}
+              >
                 {displayedEmail}
               </Typography>
               <Typography color="text.secondary" sx={{ mt: 0.3 }}>
@@ -278,7 +328,6 @@ export default function ProfilePage() {
 
           <Divider sx={{ my: 2 }} />
 
-          {/* Form profil */}
           <Stack spacing={1.6}>
             <TextField
               label="Email"
@@ -288,9 +337,14 @@ export default function ProfilePage() {
               size="small"
               sx={inputSx}
               autoComplete="email"
+              disabled={me?.provider !== "local"}
+              helperText={
+                me?.provider !== "local"
+                  ? `L’adresse email est gérée par ${me?.provider}.`
+                  : undefined
+              }
             />
 
-            {/* Avatar URL mais “discret” : label caché / placeholder */}
             <TextField
               id="avatarUrlInput"
               label="Avatar URL (optionnel)"
@@ -304,11 +358,7 @@ export default function ProfilePage() {
             />
 
             <Stack direction="row" spacing={1} justifyContent="flex-end">
-              <Button
-                variant="outlined"
-                sx={pillBtnSx}
-                onClick={() => nav(-1)}
-              >
+              <Button variant="outlined" sx={pillBtnSx} onClick={() => nav(-1)}>
                 Retour
               </Button>
               <Button
@@ -331,54 +381,87 @@ export default function ProfilePage() {
 
           <Divider sx={{ my: 2.2 }} />
 
-          {/* Section mot de passe */}
           <Stack spacing={1.6}>
-            <Typography sx={{ fontWeight: 900, fontSize: 18 }}>
-              Sécurité
-            </Typography>
+            {me?.provider !== "local" ? (
+              // 👉 CAS OAuth (Google / GitHub)
+              <>
+                <Typography sx={{ fontWeight: 900, fontSize: 18 }}>
+                  Sécurité
+                </Typography>
 
-            <TextField
-              label="Ancien mot de passe"
-              type="password"
-              value={oldPassword}
-              onChange={(e) => setOldPassword(e.target.value)}
-              fullWidth
-              size="small"
-              sx={inputSx}
-              autoComplete="current-password"
-            />
+                <Typography color="text.secondary">
+                  Ton compte est connecté via {me?.provider}. Le mot de passe est géré par ce service.
+                </Typography>
+              </>
+            ) : (
+              // 👉 CAS Local (email/password)
+              <>
+                <Typography sx={{ fontWeight: 900, fontSize: 18 }}>
+                  Sécurité
+                </Typography>
 
-            <TextField
-              label="Nouveau mot de passe"
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              fullWidth
-              size="small"
-              sx={inputSx}
-              autoComplete="new-password"
-              helperText="Minimum 8 caractères."
-            />
+                {passwordError && (
+                  <Typography sx={{ color: "error.main", fontWeight: 700 }}>
+                    {passwordError}
+                  </Typography>
+                )}
 
-            <Stack direction="row" spacing={1} justifyContent="flex-end">
-              <Button
-                variant="contained"
-                color="secondary"
-                sx={(theme) => ({
-                  ...pillBtnSx(theme),
-                  bgcolor: theme.palette.mode === "dark" ? "rgba(148,163,184,0.12)" : "rgba(2,6,23,0.06)",
-                  color: theme.palette.text.primary,
-                  border: `1px solid ${theme.palette.divider}`,
-                  "&:hover": {
-                    bgcolor: theme.palette.mode === "dark" ? "rgba(148,163,184,0.16)" : "rgba(2,6,23,0.08)",
-                  },
-                })}
-                onClick={onChangePassword}
-                disabled={loadingPwd}
-              >
-                {loadingPwd ? "Mise à jour..." : "Mettre à jour le mot de passe"}
-              </Button>
-            </Stack>
+                {passwordOk && (
+                  <Typography sx={{ color: "success.main", fontWeight: 700 }}>
+                    {passwordOk}
+                  </Typography>
+                )}
+
+                <TextField
+                  label="Ancien mot de passe"
+                  type="password"
+                  value={oldPassword}
+                  onChange={(e) => setOldPassword(e.target.value)}
+                  fullWidth
+                  size="small"
+                  sx={inputSx}
+                  autoComplete="current-password"
+                />
+
+                <TextField
+                  label="Nouveau mot de passe"
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  fullWidth
+                  size="small"
+                  sx={inputSx}
+                  autoComplete="new-password"
+                  helperText="Minimum 8 caractères."
+                />
+
+                <Stack direction="row" spacing={1} justifyContent="flex-end">
+                  <Button
+                    variant="contained"
+                    color="secondary"
+                    sx={(theme) => ({
+                      ...pillBtnSx(theme),
+                      bgcolor:
+                        theme.palette.mode === "dark"
+                          ? "rgba(148,163,184,0.12)"
+                          : "rgba(2,6,23,0.06)",
+                      color: theme.palette.text.primary,
+                      border: `1px solid ${theme.palette.divider}`,
+                      "&:hover": {
+                        bgcolor:
+                          theme.palette.mode === "dark"
+                            ? "rgba(148,163,184,0.16)"
+                            : "rgba(2,6,23,0.08)",
+                      },
+                    })}
+                    onClick={onChangePassword}
+                    disabled={loadingPwd}
+                  >
+                    {loadingPwd ? "Mise à jour..." : "Mettre à jour le mot de passe"}
+                  </Button>
+                </Stack>
+              </>
+            )}
           </Stack>
         </Paper>
       </Stack>
