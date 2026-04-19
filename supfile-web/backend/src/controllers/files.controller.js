@@ -2,8 +2,10 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const archiver = require("archiver");
 
 const FileItem = require("../models/FileItem");
+const ShareItem = require("../models/ShareItem");
 
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
@@ -12,7 +14,81 @@ function ensureDir(dirPath) {
 function getStorageBaseDir() {
   return process.env.STORAGE_DIR || path.join(process.cwd(), "storage");
 }
+function getAbsolutePathFromStorageRelPath(storageRelPath) {
+  return path.join(getStorageBaseDir(), ...storageRelPath.split("/"));
+}
+async function getInternalShareForNode(userId, nodeId) {
+  return ShareItem.findOne({
+    mode: "internal",
+    targetUserId: userId,
+    nodeId,
+  }).select("_id ownerId targetUserId nodeId nodeType");
+}
 
+async function canAccessNode(userId, nodeId) {
+  // 1) accès direct propriétaire
+  const ownNode = await FileItem.findOne({
+    _id: nodeId,
+    ownerId: userId,
+    deletedAt: null,
+  }).select("_id ownerId parentId type");
+
+  if (ownNode) {
+    return {
+      ok: true,
+      accessType: "owner",
+      sharedRootId: null,
+      node: ownNode,
+    };
+  }
+
+  // 2) accès direct via partage interne sur ce noeud
+  const directShare = await getInternalShareForNode(userId, nodeId);
+  if (directShare) {
+    const sharedNode = await FileItem.findOne({
+      _id: nodeId,
+      deletedAt: null,
+    }).select("_id ownerId parentId type originalName");
+
+    if (!sharedNode) return { ok: false };
+
+    return {
+      ok: true,
+      accessType: "shared",
+      sharedRootId: String(nodeId),
+      node: sharedNode,
+      share: directShare,
+    };
+  }
+
+  // 3) accès hérité si nodeId est à l'intérieur d'un dossier partagé
+  let current = await FileItem.findById(nodeId).select("_id ownerId parentId type deletedAt");
+  if (!current || current.deletedAt) {
+    return { ok: false };
+  }
+
+  while (current.parentId) {
+    const parentId = String(current.parentId);
+
+    const parentShare = await getInternalShareForNode(userId, parentId);
+    if (parentShare) {
+      return {
+        ok: true,
+        accessType: "shared",
+        sharedRootId: parentId,
+        node: current,
+        share: parentShare,
+      };
+    }
+
+    current = await FileItem.findById(parentId).select("_id ownerId parentId type deletedAt");
+    if (!current || current.deletedAt) {
+      return { ok: false };
+    }
+  }
+
+  return { ok: false };
+}
 async function deletePhysicalFileIfNeeded(item) {
   if (item.type !== "file") return;
   if (!item.storageRelPath) return;
@@ -100,25 +176,52 @@ exports.list = async (req, res) => {
   try {
     if (!req.user?._id) return res.status(401).json({ error: "UNAUTHORIZED" });
 
-    const ownerId = req.user._id;
-
-    // parentId optionnel (pour la suite: navigation dossier)
+    const userId = req.user._id;
     const parentId = req.query.parentId || null;
 
-    const query = {
-      ownerId,
-      deletedAt: null,
-      parentId,
-    };
+    // CAS 1 : racine = fichiers perso + dossiers/fichiers partagés reçus
+    if (!parentId) {
+      const ownItems = await FileItem.find({
+        ownerId: userId,
+        deletedAt: null,
+        parentId: null,
+      })
+        .sort({ updatedAt: -1 })
+        .select("_id type originalName mimeType size parentId createdAt updatedAt");
 
-    const items = await FileItem.find(query)
-      .sort({ updatedAt: -1 })
-      .select("_id type originalName mimeType size parentId createdAt updatedAt");
+      const receivedShares = await ShareItem.find({
+        mode: "internal",
+        targetUserId: userId,
+      }).select("nodeId ownerId nodeType createdAt");
 
-    return res.json({
-      ok: true,
-      parentId,
-      items: items.map((d) => ({
+      const sharedNodeIds = receivedShares.map((s) => s.nodeId);
+
+      const sharedItemsRaw = sharedNodeIds.length
+        ? await FileItem.find({
+            _id: { $in: sharedNodeIds },
+            deletedAt: null,
+          }).select("_id type originalName mimeType size parentId createdAt updatedAt ownerId")
+        : [];
+
+      const sharedItems = sharedItemsRaw.map((d) => {
+        const share = receivedShares.find((s) => String(s.nodeId) === String(d._id));
+
+        return {
+          id: d._id,
+          originalName: d.originalName,
+          mimeType: d.mimeType,
+          type: d.type,
+          size: d.size,
+          parentId: null, // affiché à la racine chez le receveur
+          createdAt: d.createdAt,
+          updatedAt: d.updatedAt,
+          isShared: true,
+          sharedBy: share?.ownerId || null,
+          sharedAt: share?.createdAt || null,
+        };
+      });
+
+      const ownMapped = ownItems.map((d) => ({
         id: d._id,
         originalName: d.originalName,
         mimeType: d.mimeType,
@@ -127,19 +230,63 @@ exports.list = async (req, res) => {
         parentId: d.parentId,
         createdAt: d.createdAt,
         updatedAt: d.updatedAt,
+        isShared: false,
+        sharedBy: null,
+        sharedAt: null,
+      }));
+
+      return res.json({
+        ok: true,
+        parentId: null,
+        items: [...ownMapped, ...sharedItems],
+      });
+    }
+
+    // CAS 2 : navigation dans un dossier
+    const access = await canAccessNode(userId, parentId);
+    if (!access.ok) {
+      return res.status(403).json({ error: "FORBIDDEN" });
+    }
+
+    const children = await FileItem.find({
+      parentId,
+      deletedAt: null,
+    })
+      .sort({ updatedAt: -1 })
+      .select("_id type originalName mimeType size parentId createdAt updatedAt ownerId");
+
+    return res.json({
+      ok: true,
+      parentId,
+      items: children.map((d) => ({
+        id: d._id,
+        originalName: d.originalName,
+        mimeType: d.mimeType,
+        type: d.type,
+        size: d.size,
+        parentId: d.parentId,
+        createdAt: d.createdAt,
+        updatedAt: d.updatedAt,
+        isShared: access.accessType === "shared",
+        sharedBy: access.share?.ownerId || null,
       })),
     });
   } catch (err) {
     return res.status(500).json({ error: "LIST_FAILED", message: err.message });
   }
 };
+
 exports.download = async (req, res) => {
   try {
     if (!req.user?._id) return res.status(401).json({ error: "UNAUTHORIZED" });
 
+    const access = await canAccessNode(req.user._id, req.params.id);
+    if (!access.ok) {
+      return res.status(403).json({ error: "FORBIDDEN" });
+    }
+
     const fileDoc = await FileItem.findOne({
       _id: req.params.id,
-      ownerId: req.user._id,
       deletedAt: null,
     });
 
@@ -165,13 +312,108 @@ exports.download = async (req, res) => {
     return res.status(500).json({ error: "DOWNLOAD_FAILED", message: err.message });
   }
 };
+exports.downloadFolder = async (req, res) => {
+  try {
+    if (!req.user?._id) {
+      return res.status(401).json({ error: "UNAUTHORIZED" });
+    }
+
+
+
+    const access = await canAccessNode(req.user._id, req.params.id);
+    if (!access.ok) {
+      return res.status(403).json({ error: "FORBIDDEN" });
+    }
+
+    const rootFolder = await FileItem.findOne({
+      _id: req.params.id,
+      deletedAt: null,
+      type: "folder",
+    }).select("_id originalName type ownerId");
+
+    if (!rootFolder) {
+      return res.status(404).json({ error: "FOLDER_NOT_FOUND" });
+    }
+
+    const ownerId = rootFolder.ownerId;
+
+    if (!rootFolder) {
+      return res.status(404).json({ error: "FOLDER_NOT_FOUND" });
+    }
+
+    const safeName = (rootFolder.originalName || "folder").replace(/[\\/:*?"<>|]+/g, "_");
+
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${encodeURIComponent(safeName)}.zip"`
+    );
+
+    const archive = archiver("zip", { zlib: { level: 9 } });
+
+    archive.on("error", (err) => {
+      throw err;
+    });
+
+    archive.pipe(res);
+
+    const queue = [
+      {
+        folderId: rootFolder._id,
+        relativePath: safeName,
+      },
+    ];
+
+    while (queue.length > 0) {
+      const current = queue.shift();
+
+      const children = await FileItem.find({
+        ownerId,
+        deletedAt: null,
+        parentId: current.folderId,
+      }).select("_id type originalName storageRelPath");
+
+      for (const child of children) {
+        const childPath = `${current.relativePath}/${child.originalName}`;
+
+        if (child.type === "folder") {
+          archive.append("", { name: `${childPath}/` });
+          queue.push({
+            folderId: child._id,
+            relativePath: childPath,
+          });
+        } else if (child.type === "file" && child.storageRelPath) {
+          const absPath = getAbsolutePathFromStorageRelPath(child.storageRelPath);
+
+          if (fs.existsSync(absPath)) {
+            archive.file(absPath, { name: childPath });
+          }
+        }
+      }
+    }
+
+    await archive.finalize();
+  } catch (err) {
+    if (!res.headersSent) {
+      return res.status(500).json({
+        error: "FOLDER_DOWNLOAD_FAILED",
+        message: err.message,
+      });
+    }
+  }
+};
+
 exports.preview = async (req, res) => {
   try {
     if (!req.user?._id) return res.status(401).json({ error: "UNAUTHORIZED" });
 
+    const access = await canAccessNode(req.user._id, req.params.id);
+    if (!access.ok) {
+      return res.status(403).json({ error: "FORBIDDEN" });
+    }
+
     const fileDoc = await FileItem.findOne({
       _id: req.params.id,
-      ownerId: req.user._id,
       deletedAt: null,
     });
 
@@ -265,7 +507,7 @@ exports.remove = async (req, res) => {
       deletedAt: null,
     }).select("_id type");
 
-    if (!item) return res.status(404).json({ error: "NOT_FOUND" });
+    if (!item) return res.status(404).json({ error: "Vous ne disposez pas des droits nécéssaires" });
 
     const now = new Date();
 
@@ -391,7 +633,18 @@ exports.createFolder = async (req, res) => {
     const parentId = req.body.parentId || null;
 
     if (!name) return res.status(400).json({ error: "FOLDER_NAME_REQUIRED" });
+    if (parentId) {
+      const parent = await FileItem.findOne({
+        _id: parentId,
+        ownerId: req.user._id,
+        deletedAt: null,
+        type: "folder",
+      }).select("_id");
 
+      if (!parent) {
+        return res.status(400).json({ error: "INVALID_PARENT_FOLDER" });
+      }
+    }
     const folder = await FileItem.create({
       ownerId: req.user._id,
       type: "folder",
@@ -425,7 +678,7 @@ exports.rename = async (req, res) => {
       { new: true }
     ).select("_id type originalName parentId updatedAt");
 
-    if (!doc) return res.status(404).json({ error: "NOT_FOUND" });
+    if (!doc) return res.status(404).json({ error: "Vous ne disposez pas des droits nédéssaires" });
 
     return res.json({
       ok: true,
@@ -454,10 +707,13 @@ exports.move = async (req, res) => {
       _id: req.params.id,
       ownerId,
       deletedAt: null,
-    }).select("_id type");
+    }).select("_id type parentId");
 
     if (!item) return res.status(404).json({ error: "NOT_FOUND" });
 
+    if (String(item.parentId || "") === String(targetParentId || "")) {
+      return res.json({ ok: true, unchanged: true });
+    }
     // 2) si parentId fourni, vérifier que c'est un folder du user
     if (targetParentId) {
       const parent = await FileItem.findOne({
@@ -477,11 +733,6 @@ exports.move = async (req, res) => {
       // 4) empêcher cycle : si item est un folder, on remonte les parents du target
       if (item.type === "folder") {
         let currentParentId = parent.parentId ? String(parent.parentId) : null;
-
-        // targetParentId lui-même est déjà connu, on le check aussi
-        if (String(targetParentId) === String(item._id)) {
-          return res.status(400).json({ error: "CYCLE_DETECTED" });
-        }
 
         while (currentParentId) {
           if (currentParentId === String(item._id)) {
@@ -508,7 +759,22 @@ exports.move = async (req, res) => {
       { $set: { parentId: targetParentId } }
     );
 
-    return res.json({ ok: true });
+    const updated = await FileItem.findOne({
+  _id: item._id,
+  ownerId,
+  deletedAt: null,
+}).select("_id type originalName parentId updatedAt");
+
+return res.json({
+  ok: true,
+  item: {
+    id: updated._id,
+    type: updated.type,
+    originalName: updated.originalName,
+    parentId: updated.parentId,
+    updatedAt: updated.updatedAt,
+  },
+});
   } catch (err) {
     return res.status(500).json({ error: "MOVE_FAILED", message: err.message });
   }
@@ -518,13 +784,17 @@ exports.breadcrumbs = async (req, res) => {
   try {
     if (!req.user?._id) return res.status(401).json({ error: "UNAUTHORIZED" });
 
-    let current = await FileItem.findOne({
-      _id: req.params.id,
-      ownerId: req.user._id,
-      deletedAt: null,
-    }).select("_id originalName parentId");
+    const userId = req.user._id;
+    const access = await canAccessNode(userId, req.params.id);
 
-    if (!current) return res.status(404).json({ error: "NOT_FOUND" });
+    if (!access.ok) {
+      return res.status(403).json({ error: "FORBIDDEN" });
+    }
+
+    let current = await FileItem.findById(req.params.id).select("_id originalName parentId deletedAt");
+    if (!current || current.deletedAt) {
+      return res.status(404).json({ error: "NOT_FOUND" });
+    }
 
     const path = [];
 
@@ -536,15 +806,18 @@ exports.breadcrumbs = async (req, res) => {
 
       if (!current.parentId) break;
 
-      current = await FileItem.findOne({
-        _id: current.parentId,
-        ownerId: req.user._id,
-        deletedAt: null,
-      }).select("_id originalName parentId");
+      if (
+        access.accessType === "shared" &&
+        String(current._id) === String(access.sharedRootId)
+      ) {
+        break;
+      }
+
+      current = await FileItem.findById(current.parentId).select("_id originalName parentId deletedAt");
+      if (!current || current.deletedAt) break;
     }
 
     return res.json({ ok: true, path });
-
   } catch (err) {
     return res.status(500).json({ error: "BREADCRUMBS_FAILED", message: err.message });
   }
@@ -641,3 +914,4 @@ exports.emptyTrash = async (req, res) => {
     return res.status(500).json({ error: "EMPTY_TRASH_FAILED", message: err.message });
   }
 };
+

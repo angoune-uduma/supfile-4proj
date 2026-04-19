@@ -10,7 +10,7 @@ const User = require("../models/User");
 exports.me = async (req, res) => {
   try {
     const user = await User.findById(req.user._id).select(
-      "email avatarUrl avatarMeta createdAt"
+      "email avatarUrl avatarMeta createdAt provider"
     );
 
     if (!user) {
@@ -23,6 +23,7 @@ exports.me = async (req, res) => {
       avatarUrl: user.avatarUrl || null,
       avatarMeta: user.avatarMeta || null,
       createdAt: user.createdAt,
+      provider: user.provider,
     });
   } catch (err) {
     return res.status(500).json({ error: "SERVER_ERROR" });
@@ -40,6 +41,10 @@ exports.updateMe = async (req, res) => {
     const user = await User.findById(req.user._id);
     if (!user) {
       return res.status(404).json({ error: "USER_NOT_FOUND" });
+    }
+
+    if (email && user.provider !== "local") {
+      return res.status(400).json({ error: "OAUTH_EMAIL_NOT_EDITABLE" });
     }
 
     if (email) user.email = email;
@@ -77,7 +82,7 @@ exports.changePassword = async (req, res) => {
 
     const ok = await bcrypt.compare(oldPassword, user.passwordHash);
     if (!ok) {
-      return res.status(401).json({ error: "INVALID_OLD_PASSWORD" });
+      return res.status(400).json({ error: "INVALID_OLD_PASSWORD" });
     }
 
     user.passwordHash = await bcrypt.hash(newPassword, 10);
