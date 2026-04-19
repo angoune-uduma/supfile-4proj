@@ -1,3 +1,4 @@
+//frontend/src/services/api.js
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
 // ---- tokens helpers
@@ -18,6 +19,10 @@ export function clearTokens() {
   localStorage.removeItem("accessToken");
   localStorage.removeItem("refreshToken");
 }
+
+type ApiFetchOptions = RequestInit & {
+  isFormData?: boolean;
+};
 
 // ---- refresh call
 async function refreshAccessToken(): Promise<string | null> {
@@ -40,17 +45,29 @@ async function refreshAccessToken(): Promise<string | null> {
   return data.accessToken as string;
 }
 
+// ---- helper pour construire les headers
+function buildHeaders(options: ApiFetchOptions, token?: string | null) {
+  const headers = new Headers(options.headers || {});
+
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  // ✅ important: ne pas forcer Content-Type pour FormData
+  if (!options.isFormData && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  return headers;
+}
+
 // ---- apiFetch wrapper (auto attach bearer + auto refresh on 401)
-export async function apiFetch(path: string, options: RequestInit = {}) {
+export async function apiFetch(path: string, options: ApiFetchOptions = {}) {
   const token = getAccessToken();
 
   const res = await fetch(`${API_URL}${path}`, {
     ...options,
-    headers: {
-      ...(options.headers || {}),
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
+    headers: buildHeaders(options, token),
   });
 
   // if expired -> refresh -> retry once
@@ -60,11 +77,7 @@ export async function apiFetch(path: string, options: RequestInit = {}) {
     if (newToken) {
       const retry = await fetch(`${API_URL}${path}`, {
         ...options,
-        headers: {
-          ...(options.headers || {}),
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${newToken}`,
-        },
+        headers: buildHeaders(options, newToken),
       });
 
       const retryData = await retry.json().catch(() => ({}));
