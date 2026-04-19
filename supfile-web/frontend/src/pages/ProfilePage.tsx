@@ -23,6 +23,7 @@ type Me = {
   email: string;
   avatarUrl?: string | null;
   avatarMeta?: unknown;
+   provider?: "local" | "google" | "github";
 };
 
 export default function ProfilePage() {
@@ -40,8 +41,11 @@ export default function ProfilePage() {
 
   const [loading, setLoading] = useState(false);
   const [loadingPwd, setLoadingPwd] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [ok, setOk] = useState<string | null>(null);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [profileOk, setProfileOk] = useState<string | null>(null);
+
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordOk, setPasswordOk] = useState<string | null>(null);
 
   // Styles "glass" cohérents dark/light
   const pageBg = useMemo(
@@ -97,8 +101,8 @@ export default function ProfilePage() {
   });
 
   async function loadMe() {
-    setError(null);
-    setOk(null);
+    setProfileError(null);
+    setProfileOk(null);
 
     const { res, data } = await apiFetch("/user/me", { method: "GET" });
 
@@ -108,15 +112,16 @@ export default function ProfilePage() {
         nav("/login", { replace: true });
         return;
       }
-      setError(data?.error || "Impossible de récupérer le profil.");
+      setProfileError(data?.error || "Impossible de récupérer le profil.");
       return;
     }
 
     const next: Me = {
-      id: data?.id,
+        id: data?.id || data?._id,
       email: data?.email,
       avatarUrl: data?.avatarUrl ?? null,
       avatarMeta: data?.avatarMeta,
+        provider: data?.provider,
     };
 
     setMe(next);
@@ -130,14 +135,17 @@ export default function ProfilePage() {
   }, []);
 
   async function onSave() {
-    setError(null);
-    setOk(null);
+    setProfileError(null);
+    setProfileOk(null);
     setLoading(true);
 
     try {
       const payload: { email?: string; avatarUrl?: string | null } = {};
 
-      if (email?.trim()) payload.email = email.trim();
+      if (me?.provider === "local" && email?.trim()) {
+        payload.email = email.trim();
+      }
+
       payload.avatarUrl = avatarUrl?.trim() ? avatarUrl.trim() : null;
 
       const { res, data } = await apiFetch("/user/me", {
@@ -151,30 +159,36 @@ export default function ProfilePage() {
           nav("/login", { replace: true });
           return;
         }
-        setError(data?.error || "Erreur lors de la mise à jour du profil.");
+        setProfileError(data?.error || "Erreur lors de la mise à jour du profil.");
         return;
       }
 
-      setOk("Profil mis à jour ✅");
+      setProfileOk("Profil mis à jour ✅");
       await loadMe();
+      window.dispatchEvent(new Event("profile-updated"));
     } catch {
-      setError("Erreur serveur.");
+      setProfileError("Erreur serveur.");
     } finally {
       setLoading(false);
     }
   }
 
   async function onChangePassword() {
-    setError(null);
-    setOk(null);
+    setPasswordError(null);
+    setPasswordOk(null);
 
-    if (!oldPassword || !newPassword) {
-      setError("Remplis tous les champs du mot de passe.");
+    if (!oldPassword.trim()) {
+      setPasswordError("L'ancien mot de passe est obligatoire.");
       return;
     }
 
-    if (newPassword.length < 8) {
-      setError("Le nouveau mot de passe doit contenir au moins 8 caractères.");
+    if (!newPassword.trim()) {
+      setPasswordError("Le nouveau mot de passe est obligatoire.");
+      return;
+    }
+
+    if (newPassword.trim().length < 8) {
+      setPasswordError("Le nouveau mot de passe doit contenir au moins 8 caractères.");
       return;
     }
 
@@ -195,15 +209,26 @@ export default function ProfilePage() {
           nav("/login", { replace: true });
           return;
         }
-        setError(data?.error || "Erreur mise à jour mot de passe.");
+
+        if (data?.error === "INVALID_OLD_PASSWORD") {
+          setPasswordError("L'ancien mot de passe est incorrect.");
+          return;
+        }
+
+        if (data?.error === "OAUTH_ACCOUNT_NO_PASSWORD") {
+          setPasswordError("Ce compte ne possède pas de mot de passe local.");
+          return;
+        }
+
+        setPasswordError(data?.error || "Erreur mise à jour mot de passe.");
         return;
       }
 
-      setOk("Mot de passe mis à jour ✅");
+      setPasswordOk("Mot de passe mis à jour ✅");
       setOldPassword("");
       setNewPassword("");
     } catch {
-      setError("Erreur serveur.");
+      setPasswordError("Erreur serveur.");
     } finally {
       setLoadingPwd(false);
     }
@@ -222,17 +247,17 @@ export default function ProfilePage() {
             Mon profil
           </Typography>
           <Typography color="text.secondary" sx={{ mt: 0.4 }}>
-            Gère ton email, ton avatar et ton mot de passe.
+            Gère les informations de ton compte.
           </Typography>
 
-          {error && (
+          {profileError && (
             <Typography sx={{ mt: 1, color: "error.main", fontWeight: 700 }}>
-              {error}
+              {profileError}
             </Typography>
           )}
-          {ok && (
+          {profileOk && (
             <Typography sx={{ mt: 1, color: "success.main", fontWeight: 700 }}>
-              {ok}
+              {profileOk}
             </Typography>
           )}
         </Box>
@@ -312,6 +337,12 @@ export default function ProfilePage() {
               size="small"
               sx={inputSx}
               autoComplete="email"
+              disabled={me?.provider !== "local"}
+              helperText={
+                me?.provider !== "local"
+                  ? `L’adresse email est gérée par ${me?.provider}.`
+                  : undefined
+              }
             />
 
             <TextField
@@ -351,60 +382,86 @@ export default function ProfilePage() {
           <Divider sx={{ my: 2.2 }} />
 
           <Stack spacing={1.6}>
-            <Typography sx={{ fontWeight: 900, fontSize: 18 }}>
-              Sécurité
-            </Typography>
+            {me?.provider !== "local" ? (
+              // 👉 CAS OAuth (Google / GitHub)
+              <>
+                <Typography sx={{ fontWeight: 900, fontSize: 18 }}>
+                  Sécurité
+                </Typography>
 
-            <TextField
-              label="Ancien mot de passe"
-              type="password"
-              value={oldPassword}
-              onChange={(e) => setOldPassword(e.target.value)}
-              fullWidth
-              size="small"
-              sx={inputSx}
-              autoComplete="current-password"
-            />
+                <Typography color="text.secondary">
+                  Ton compte est connecté via {me?.provider}. Le mot de passe est géré par ce service.
+                </Typography>
+              </>
+            ) : (
+              // 👉 CAS Local (email/password)
+              <>
+                <Typography sx={{ fontWeight: 900, fontSize: 18 }}>
+                  Sécurité
+                </Typography>
 
-            <TextField
-              label="Nouveau mot de passe"
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              fullWidth
-              size="small"
-              sx={inputSx}
-              autoComplete="new-password"
-              helperText="Minimum 8 caractères."
-            />
+                {passwordError && (
+                  <Typography sx={{ color: "error.main", fontWeight: 700 }}>
+                    {passwordError}
+                  </Typography>
+                )}
 
-            <Stack direction="row" spacing={1} justifyContent="flex-end">
-              <Button
-                variant="contained"
-                color="secondary"
-                sx={(theme) => ({
-                  ...pillBtnSx(theme),
-                  bgcolor:
-                    theme.palette.mode === "dark"
-                      ? "rgba(148,163,184,0.12)"
-                      : "rgba(2,6,23,0.06)",
-                  color: theme.palette.text.primary,
-                  border: `1px solid ${theme.palette.divider}`,
-                  "&:hover": {
-                    bgcolor:
-                      theme.palette.mode === "dark"
-                        ? "rgba(148,163,184,0.16)"
-                        : "rgba(2,6,23,0.08)",
-                  },
-                })}
-                onClick={onChangePassword}
-                disabled={loadingPwd}
-              >
-                {loadingPwd
-                  ? "Mise à jour..."
-                  : "Mettre à jour le mot de passe"}
-              </Button>
-            </Stack>
+                {passwordOk && (
+                  <Typography sx={{ color: "success.main", fontWeight: 700 }}>
+                    {passwordOk}
+                  </Typography>
+                )}
+
+                <TextField
+                  label="Ancien mot de passe"
+                  type="password"
+                  value={oldPassword}
+                  onChange={(e) => setOldPassword(e.target.value)}
+                  fullWidth
+                  size="small"
+                  sx={inputSx}
+                  autoComplete="current-password"
+                />
+
+                <TextField
+                  label="Nouveau mot de passe"
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  fullWidth
+                  size="small"
+                  sx={inputSx}
+                  autoComplete="new-password"
+                  helperText="Minimum 8 caractères."
+                />
+
+                <Stack direction="row" spacing={1} justifyContent="flex-end">
+                  <Button
+                    variant="contained"
+                    color="secondary"
+                    sx={(theme) => ({
+                      ...pillBtnSx(theme),
+                      bgcolor:
+                        theme.palette.mode === "dark"
+                          ? "rgba(148,163,184,0.12)"
+                          : "rgba(2,6,23,0.06)",
+                      color: theme.palette.text.primary,
+                      border: `1px solid ${theme.palette.divider}`,
+                      "&:hover": {
+                        bgcolor:
+                          theme.palette.mode === "dark"
+                            ? "rgba(148,163,184,0.16)"
+                            : "rgba(2,6,23,0.08)",
+                      },
+                    })}
+                    onClick={onChangePassword}
+                    disabled={loadingPwd}
+                  >
+                    {loadingPwd ? "Mise à jour..." : "Mettre à jour le mot de passe"}
+                  </Button>
+                </Stack>
+              </>
+            )}
           </Stack>
         </Paper>
       </Stack>

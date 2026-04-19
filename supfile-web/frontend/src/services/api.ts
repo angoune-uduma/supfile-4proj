@@ -1,4 +1,3 @@
-//frontend/src/services/api.js
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
 // ---- token helpers
@@ -10,7 +9,7 @@ export function getRefreshToken() {
   return localStorage.getItem("refreshToken");
 }
 
-export function setTokens(accessToken: string, refreshToken?: string) {
+export function setTokens(accessToken, refreshToken) {
   localStorage.setItem("accessToken", accessToken);
   if (refreshToken) {
     localStorage.setItem("refreshToken", refreshToken);
@@ -22,12 +21,11 @@ export function clearTokens() {
   localStorage.removeItem("refreshToken");
 }
 
-type ApiFetchOptions = RequestInit & {
-  isFormData?: boolean;
-};
+// ---- single refresh shared by concurrent requests
+let refreshPromise = null;
 
 // ---- refresh call
-async function refreshAccessToken(): Promise<string | null> {
+async function refreshAccessToken() {
   if (refreshPromise) return refreshPromise;
 
   refreshPromise = (async () => {
@@ -49,7 +47,7 @@ async function refreshAccessToken(): Promise<string | null> {
       }
 
       setTokens(data.accessToken, data.refreshToken);
-      return data.accessToken as string;
+      return data.accessToken;
     } catch {
       clearTokens();
       return null;
@@ -62,14 +60,15 @@ async function refreshAccessToken(): Promise<string | null> {
 }
 
 // ---- helper pour construire les headers
-function buildHeaders(options: ApiFetchOptions, token?: string | null) {
+function buildHeaders(options = {}, token = null) {
   const headers = new Headers(options.headers || {});
 
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  // ✅ important: ne pas forcer Content-Type pour FormData
+  // très important pour l'upload :
+  // ne pas forcer Content-Type si on envoie du FormData
   if (!options.isFormData && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
@@ -78,7 +77,7 @@ function buildHeaders(options: ApiFetchOptions, token?: string | null) {
 }
 
 // ---- apiFetch wrapper (auto attach bearer + auto refresh on 401)
-export async function apiFetch(path: string, options: ApiFetchOptions = {}) {
+export async function apiFetch(path, options = {}) {
   const token = getAccessToken();
 
   let res = await fetch(`${API_URL}${path}`, {
@@ -86,7 +85,6 @@ export async function apiFetch(path: string, options: ApiFetchOptions = {}) {
     headers: buildHeaders(options, token),
   });
 
-  // Access token expiré -> refresh -> retry 1 fois
   if (res.status === 401) {
     const newToken = await refreshAccessToken();
 
@@ -105,7 +103,9 @@ export async function apiFetch(path: string, options: ApiFetchOptions = {}) {
   const contentType = res.headers.get("content-type") || "";
   const isJson = contentType.includes("application/json");
 
-  const data = isJson ? await res.json().catch(() => ({})) : await res.text().catch(() => "");
+  const data = isJson
+    ? await res.json().catch(() => ({}))
+    : await res.text().catch(() => "");
 
   return { res, data };
 }
