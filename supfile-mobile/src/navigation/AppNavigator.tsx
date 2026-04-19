@@ -7,9 +7,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import DashboardScreen from "../screens/DashboardScreen";
 import ProfileScreen from "../screens/ProfileScreen";
+import FilesScreen from "../screens/FilesScreen";
 
 type AppTabsParamList = {
   Dashboard: undefined;
+  Files: undefined;
   Profile: undefined;
 };
 
@@ -32,9 +34,7 @@ function GlassTabBar({ state, descriptors, navigation }: any) {
           <View style={styles.tabInner}>
             {state.routes.map((route: any, index: number) => {
               const { options } = descriptors[route.key];
-              const label =
-                options.tabBarLabel ?? options.title ?? route.name;
-
+              const label = options.tabBarLabel ?? options.title ?? route.name;
               const isFocused = state.index === index;
 
               const onPress = () => {
@@ -49,34 +49,33 @@ function GlassTabBar({ state, descriptors, navigation }: any) {
                 }
               };
 
-              const iconName =
-                route.name === "Dashboard"
-                  ? (isFocused ? "grid" : "grid-outline")
-                  : (isFocused ? "person" : "person-outline");
+              let iconName = "grid-outline";
+              if (route.name === "Dashboard") iconName = isFocused ? "grid" : "grid-outline";
+              if (route.name === "Files") iconName = isFocused ? "folder" : "folder-outline";
+              if (route.name === "Profile") iconName = isFocused ? "person" : "person-outline";
 
               return (
-                <Pressable
-                  key={route.key}
-                  onPress={onPress}
-                  style={styles.item}
-                >
-                  <View
-                    style={[
-                      styles.iconPill,
-                      isFocused && styles.iconPillActive,
-                    ]}
-                  >
+                <Pressable key={route.key} onPress={onPress} style={styles.item}>
+                  <View style={[styles.iconPill, isFocused && styles.iconPillActive]}>
                     <Ionicons
                       name={iconName as any}
                       size={20}
-                      color={isFocused ? "rgba(255,255,255,0.95)" : "rgba(255,255,255,0.55)"}
+                      color={
+                        isFocused
+                          ? "rgba(255,255,255,0.95)"
+                          : "rgba(255,255,255,0.55)"
+                      }
                     />
                   </View>
 
                   <Text
                     style={[
                       styles.label,
-                      { color: isFocused ? "rgba(96,165,250,0.95)" : "rgba(255,255,255,0.55)" },
+                      {
+                        color: isFocused
+                          ? "rgba(96,165,250,0.95)"
+                          : "rgba(255,255,255,0.55)",
+                      },
                     ]}
                   >
                     {label}
@@ -100,6 +99,7 @@ export default function AppNavigator() {
       }}
     >
       <Tab.Screen name="Dashboard" component={DashboardScreen} />
+      <Tab.Screen name="Files" component={FilesScreen} />
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
   );

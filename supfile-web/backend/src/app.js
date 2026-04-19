@@ -19,7 +19,6 @@ const allowedOrigins = [
   "http://172.20.10.4:5173",
   "http://172.20.10.3:8081",
   "http://localhost:8081",
-  "exp://172.20.10.3:8081"
 ];
 
 app.use(
