@@ -1,4 +1,4 @@
-// src/App.tsx
+// frontend/src/App.tsx
 import { Routes, Route, Navigate } from "react-router-dom";
 import { Box } from "@mui/material";
 
@@ -8,6 +8,9 @@ import ProfilePage from "./pages/ProfilePage";
 import LoginPage from "./pages/auth/LoginPage";
 import RegisterPage from "./pages/auth/RegisterPage";
 import AuthSuccess from "./pages/auth/AuthSuccess";
+import FilesPage from "./pages/FilesPage";
+import TrashPage from "./pages/TrashPage";
+
 import RequireAuth from "./components/auth/RequireAuth";
 
 
@@ -47,10 +50,12 @@ function AppLayout({ mode, toggleTheme }: AppProps) {
           {/* page profil / paramètres */}
           <Route path="/settings" element={<ProfilePage />} />
 
-          {/* autres pages */}
-          <Route path="/files" element={<Placeholder title="Mes fichiers" />} />
+          {/* placeholders */}
+          
           <Route path="/shared" element={<Placeholder title="Partagés" />} />
-          <Route path="/trash" element={<Placeholder title="Corbeille" />} />
+          <Route path="/trash" element={<TrashPage />} />
+          <Route path="/settings" element={<Placeholder title="Paramètres" />} />
+          <Route path="/files" element={<FilesPage />} />
 
           {/* fallback dans l'app */}
           <Route path="*" element={<Navigate to="/dashboard" replace />} />

@@ -1,3 +1,4 @@
+//frontend/src/services/api.js
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
 // ---- token helpers
@@ -21,9 +22,11 @@ export function clearTokens() {
   localStorage.removeItem("refreshToken");
 }
 
-// ---- single refresh shared by concurrent requests
-let refreshPromise: Promise<string | null> | null = null;
+type ApiFetchOptions = RequestInit & {
+  isFormData?: boolean;
+};
 
+// ---- refresh call
 async function refreshAccessToken(): Promise<string | null> {
   if (refreshPromise) return refreshPromise;
 
@@ -58,32 +61,29 @@ async function refreshAccessToken(): Promise<string | null> {
   return refreshPromise;
 }
 
-function buildHeaders(options: RequestInit = {}, token?: string) {
+// ---- helper pour construire les headers
+function buildHeaders(options: ApiFetchOptions, token?: string | null) {
   const headers = new Headers(options.headers || {});
 
-  // On met le Bearer si on a un token
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  // On ne force Content-Type JSON que si body simple JSON
-  const hasBody = options.body !== undefined && options.body !== null;
-  const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
-
-  if (hasBody && !isFormData && !headers.has("Content-Type")) {
+  // ✅ important: ne pas forcer Content-Type pour FormData
+  if (!options.isFormData && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
 
   return headers;
 }
 
-// ---- apiFetch wrapper
-export async function apiFetch(path: string, options: RequestInit = {}) {
+// ---- apiFetch wrapper (auto attach bearer + auto refresh on 401)
+export async function apiFetch(path: string, options: ApiFetchOptions = {}) {
   const token = getAccessToken();
 
   let res = await fetch(`${API_URL}${path}`, {
     ...options,
-    headers: buildHeaders(options, token || undefined),
+    headers: buildHeaders(options, token),
   });
 
   // Access token expiré -> refresh -> retry 1 fois
