@@ -362,3 +362,67 @@ exports.publicFile = async (req, res) => {
     });
   }
 };
+exports.internalFile = async (req, res) => {
+  try {
+    if (!req.user?._id) return res.status(401).json({ error: "UNAUTHORIZED" });
+
+    const { shareId } = req.params;
+    const { disposition } = req.query;
+
+    const share = await ShareItem.findOne({
+      _id: shareId,
+      targetUserId: req.user._id,
+      mode: "internal",
+    }).populate("nodeId", "originalName type mimeType size storageRelPath deletedAt");
+
+    if (!share || !share.nodeId || share.nodeId.deletedAt) {
+      return res.status(404).json({ error: "SHARE_NOT_FOUND" });
+    }
+
+    if (share.nodeId.type !== "file") {
+      return res.status(400).json({ error: "FOLDER_STREAM_NOT_SUPPORTED" });
+    }
+
+    const absPath = getAbsPathFromRel(share.nodeId.storageRelPath);
+    if (!fs.existsSync(absPath)) {
+      return res.status(404).json({ error: "FILE_MISSING_ON_DISK" });
+    }
+
+    const stat = await fs.promises.stat(absPath);
+    const fileSize = stat.size;
+    const mime = share.nodeId.mimeType || "application/octet-stream";
+    const safeDisposition = disposition === "attachment" ? "attachment" : "inline";
+
+    res.setHeader("Content-Type", mime);
+    res.setHeader(
+      "Content-Disposition",
+      `${safeDisposition}; filename="${encodeURIComponent(share.nodeId.originalName)}"`
+    );
+
+    const range = req.headers.range;
+    if (range) {
+      const match = range.match(/bytes=(\d+)-(\d*)/);
+      if (!match) return res.status(416).end();
+
+      const start = parseInt(match[1], 10);
+      const end = match[2] ? parseInt(match[2], 10) : fileSize - 1;
+
+      if (start >= fileSize || end >= fileSize) return res.status(416).end();
+
+      res.status(206);
+      res.setHeader("Accept-Ranges", "bytes");
+      res.setHeader("Content-Range", `bytes ${start}-${end}/${fileSize}`);
+      res.setHeader("Content-Length", end - start + 1);
+
+      return fs.createReadStream(absPath, { start, end }).pipe(res);
+    }
+
+    res.setHeader("Content-Length", fileSize);
+    return fs.createReadStream(absPath).pipe(res);
+  } catch (err) {
+    return res.status(500).json({
+      error: "INTERNAL_SHARE_FILE_FAILED",
+      message: err.message,
+    });
+  }
+};
