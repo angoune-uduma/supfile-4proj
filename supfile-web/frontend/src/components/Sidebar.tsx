@@ -53,17 +53,29 @@ export default function Sidebar({ mode, toggleTheme }: SidebarProps) {
 
   // Fetch profil (email/avatar) pour afficher l'avatar
   useEffect(() => {
-    (async () => {
+    async function loadMe() {
       const { res, data } = await apiFetch("/user/me", { method: "GET" });
       if (res.ok) setMe(data);
-      // si 401, on laisse RequireAuth gérer (ou tu peux clearTokens + redirect ici si tu veux)
-    })();
+    }
+
+    loadMe();
+
+    const handleProfileUpdated = () => {
+      loadMe();
+    };
+
+    window.addEventListener("profile-updated", handleProfileUpdated);
+
+    return () => {
+      window.removeEventListener("profile-updated", handleProfileUpdated);
+    };
   }, []);
 
   const handleLogout = () => {
     clearTokens();
     navigate("/login", { replace: true });
   };
+
 
   return (
     <Box

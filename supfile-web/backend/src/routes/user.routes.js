@@ -12,7 +12,7 @@ router.patch(
   validate(
     z.object({
       email: z.string().email().optional(),
-      avatarUrl: z.string().url().optional(),
+      avatarUrl: z.string().url().nullable().optional(),
       avatarMeta: z.any().optional(),
     })
   ),
