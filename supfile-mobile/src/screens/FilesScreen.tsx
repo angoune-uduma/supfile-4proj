@@ -1,4 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
+import * as DocumentPicker from "expo-document-picker";
+import { uploadFile } from "../services/files";
+import { WebView } from "react-native-webview";
+import { getAccessToken } from "../services/secureStore";
+import { getPreviewText, getPreviewUrl } from "../services/files";
+import { Video, ResizeMode } from "expo-av";
 import {
   ActivityIndicator,
   Alert,
@@ -57,6 +63,14 @@ export default function FilesScreen() {
   const [renameValue, setRenameValue] = useState("");
   const [renameTarget, setRenameTarget] = useState<FileItem | null>(null);
 
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewItem, setPreviewItem] = useState<FileItem | null>(null);
+  const [previewTextContent, setPreviewTextContent] = useState("");
+  const [previewToken, setPreviewToken] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+
+  const [uploading, setUploading] = useState(false);
+
   const sortedItems = useMemo(() => {
     return [...items].sort((a, b) => {
       if (a.type === "folder" && b.type !== "folder") return -1;
@@ -64,6 +78,74 @@ export default function FilesScreen() {
       return a.originalName.localeCompare(b.originalName);
     });
   }, [items]);
+
+  function isTextFile(item: FileItem) {
+    return (
+      item.mimeType?.startsWith("text/") ||
+      item.mimeType === "application/json"
+    );
+  }
+
+  function isImageFile(item: FileItem) {
+    return item.mimeType?.startsWith("image/") || false;
+  }
+
+  function isPdfFile(item: FileItem) {
+    return item.mimeType === "application/pdf";
+  }
+
+  function isVideoFile(item: FileItem) {
+    return item.mimeType?.startsWith("video/") || false;
+  }
+
+  function isAudioFile(item: FileItem) {
+    return item.mimeType?.startsWith("audio/") || false;
+  }
+
+  function isPreviewable(item: FileItem) {
+    return (
+      isTextFile(item) ||
+      isImageFile(item) ||
+      isPdfFile(item) ||
+      isVideoFile(item) ||
+      isAudioFile(item)
+    );
+  }
+
+  async function handlePickAndUpload() {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        multiple: false,
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled) return;
+
+      const picked = result.assets?.[0];
+      if (!picked) return;
+
+      setUploading(true);
+
+      await uploadFile(
+        {
+          uri: picked.uri,
+          name: picked.name,
+          mimeType: picked.mimeType,
+        },
+        currentParentId
+      );
+
+      await loadFolder(currentParentId);
+      Alert.alert("Succès", "Fichier uploadé avec succès.");
+    } catch (e: any) {
+      Alert.alert(
+        "Erreur",
+        e?.response?.data?.error || e?.response?.data?.message || "Upload impossible."
+      );
+    } finally {
+      setUploading(false);
+    }
+  }
 
   async function loadFolder(parentId?: string | null, isRefresh = false) {
     try {
@@ -131,10 +213,18 @@ export default function FilesScreen() {
     }
   }
 
+   function decodeName(name: string) {
+     try {
+       return decodeURIComponent(name);
+     } catch {
+       return name;
+     }
+   }
+
   async function handleDelete(item: FileItem) {
     Alert.alert(
       "Supprimer",
-      `Voulez-vous supprimer "${item.originalName}" ?`,
+      `Voulez-vous supprimer "${decodeName(item.originalName)}" ?`,
       [
         { text: "Annuler", style: "cancel" },
         {
@@ -155,14 +245,48 @@ export default function FilesScreen() {
       ]
     );
   }
+  function closePreview() {
+    setPreviewOpen(false);
+    setPreviewItem(null);
+    setPreviewTextContent("");
+    setPreviewToken(null);
+    setPreviewLoading(false);
+  }
 
-  function handleOpen(item: FileItem) {
+  async function handleOpen(item: FileItem) {
     if (item.type === "folder") {
       loadFolder(item.id);
       return;
     }
 
-    Alert.alert("Info", "La prévisualisation et le téléchargement arrivent ensuite.");
+    if (!isPreviewable(item)) {
+      Alert.alert("Info", "Ce type de fichier n’a pas encore de prévisualisation mobile.");
+      return;
+    }
+
+    try {
+      setPreviewLoading(true);
+      setPreviewItem(item);
+      setPreviewTextContent("");
+      setPreviewOpen(true);
+
+      const token = await getAccessToken();
+      setPreviewToken(token);
+
+      if (isTextFile(item)) {
+        const text = await getPreviewText(item.id);
+        setPreviewTextContent(text);
+      }
+    } catch (e: any) {
+      Alert.alert(
+        "Erreur",
+        e?.response?.data?.error || e?.response?.data?.message || "Prévisualisation impossible."
+      );
+      setPreviewOpen(false);
+      setPreviewItem(null);
+    } finally {
+      setPreviewLoading(false);
+    }
   }
 
   function goBack() {
@@ -175,6 +299,8 @@ export default function FilesScreen() {
 
   return (
     <Screen>
+
+
       <View style={{ flex: 1 }}>
         <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8, gap: 10 }}>
           <Text style={{ color: theme.colors.text, fontSize: 32, fontWeight: "900" }}>
@@ -221,11 +347,12 @@ export default function FilesScreen() {
             </View>
           </ScrollView>
 
-          <View style={{ flexDirection: "row", gap: 10 }}>
+          <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
             <Pressable
               onPress={() => setCreateOpen(true)}
               style={{
                 flex: 1,
+                minWidth: 100,
                 paddingVertical: 12,
                 borderRadius: 14,
                 alignItems: "center",
@@ -237,11 +364,32 @@ export default function FilesScreen() {
               </Text>
             </Pressable>
 
+            <Pressable
+              onPress={handlePickAndUpload}
+              disabled={uploading}
+              style={{
+                flex: 1,
+                minWidth: 100,
+                paddingVertical: 12,
+                borderRadius: 14,
+                alignItems: "center",
+                backgroundColor: "rgba(255,255,255,0.06)",
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.10)",
+                opacity: uploading ? 0.6 : 1,
+              }}
+            >
+              <Text style={{ color: theme.colors.text, fontWeight: "800" }}>
+                {uploading ? "Upload..." : "Upload"}
+              </Text>
+            </Pressable>
+
             {currentParentId ? (
               <Pressable
                 onPress={goBack}
                 style={{
                   flex: 1,
+                  minWidth: 100,
                   paddingVertical: 12,
                   borderRadius: 14,
                   alignItems: "center",
@@ -296,7 +444,7 @@ export default function FilesScreen() {
                         style={{ color: theme.colors.text, fontWeight: "800", fontSize: 16 }}
                         numberOfLines={1}
                       >
-                        {item.originalName}
+                        {decodeName(item.originalName)}
                       </Text>
 
                       <Text style={{ color: theme.colors.muted, marginTop: 4 }}>
@@ -470,6 +618,122 @@ export default function FilesScreen() {
           </View>
         </Modal>
       </View>
+
+      <Modal
+        visible={previewOpen}
+        transparent={false}
+        animationType="slide"
+        onRequestClose={closePreview}
+      >
+        <Screen>
+          <View style={{ flex: 1 }}>
+            <View
+              style={{
+                paddingHorizontal: 16,
+                paddingTop: 10,
+                paddingBottom: 12,
+                flexDirection: "row",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <View style={{ flex: 1, paddingRight: 10 }}>
+                <Text
+                  style={{ color: theme.colors.text, fontSize: 22, fontWeight: "900" }}
+                  numberOfLines={1}
+                >
+                  {previewItem ? decodeName(previewItem.originalName) : "Prévisualisation"}
+                </Text>
+              </View>
+
+              <Pressable
+                onPress={closePreview}
+                style={{
+                  paddingHorizontal: 14,
+                  paddingVertical: 10,
+                  borderRadius: 12,
+                  backgroundColor: "rgba(255,255,255,0.06)",
+                  borderWidth: 1,
+                  borderColor: "rgba(255,255,255,0.10)",
+                }}
+              >
+                <Text style={{ color: theme.colors.text, fontWeight: "800" }}>Fermer</Text>
+              </Pressable>
+            </View>
+
+            <View style={{ flex: 1, paddingHorizontal: 16, paddingBottom: 16 }}>
+              <Panel style={{ flex: 1, padding: 12 }}>
+                {previewLoading ? (
+                  <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+                    <ActivityIndicator />
+                    <Text style={{ color: theme.colors.muted, marginTop: 10 }}>
+                      Chargement...
+                    </Text>
+                  </View>
+                ) : previewItem && isTextFile(previewItem) ? (
+                  <ScrollView
+                    style={{ flex: 1 }}
+                    contentContainerStyle={{ paddingBottom: 24 }}
+                    showsVerticalScrollIndicator={false}
+                  >
+                    <Text
+                      style={{
+                        color: theme.colors.text,
+                        fontSize: 15,
+                        lineHeight: 22,
+                      }}
+                    >
+                      {previewTextContent}
+                    </Text>
+                  </ScrollView>
+                ) : previewItem && previewToken && isVideoFile(previewItem) ? (
+                  <Video
+                    source={{
+                      uri: getPreviewUrl(previewItem.id),
+                      headers: {
+                        Authorization: `Bearer ${previewToken}`,
+                      },
+                    }}
+                    useNativeControls
+                    resizeMode={ResizeMode.CONTAIN}
+                    style={{ width: "100%", height: 300 }}
+                  />
+                ) : previewItem && previewToken && isAudioFile(previewItem) ? (
+                  <Video
+                    source={{
+                      uri: getPreviewUrl(previewItem.id),
+                      headers: {
+                        Authorization: `Bearer ${previewToken}`,
+                      },
+                    }}
+                    useNativeControls
+                    style={{ width: "100%", height: 100 }}
+                  />
+                ) : previewItem && previewToken ? (
+                  <WebView
+                    source={{
+                      uri: getPreviewUrl(previewItem.id),
+                      headers: {
+                        Authorization: `Bearer ${previewToken}`,
+                      },
+                    }}
+                    style={{ flex: 1, backgroundColor: "transparent" }}
+                    allowsInlineMediaPlayback
+                    mediaPlaybackRequiresUserAction={false}
+                    startInLoadingState
+                  />
+                ) : (
+                  <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+                    <Text style={{ color: theme.colors.muted }}>
+                      Impossible d’afficher ce fichier.
+                    </Text>
+                  </View>
+                )}
+              </Panel>
+            </View>
+          </View>
+        </Screen>
+      </Modal>
     </Screen>
   );
 }

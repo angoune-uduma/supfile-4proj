@@ -61,3 +61,45 @@ export async function moveItem(id: string, parentId?: string | null) {
   });
   return res.data;
 }
+export async function uploadFile(
+  file: {
+    uri: string;
+    name: string;
+    mimeType?: string | null;
+  },
+  parentId?: string | null
+) {
+  const formData = new FormData();
+
+  formData.append("file", {
+    uri: file.uri,
+    name: file.name,
+    type: file.mimeType || "application/octet-stream",
+  } as any);
+
+  if (parentId) {
+    formData.append("parentId", parentId);
+  }
+
+  const res = await api.post("/files", formData, {
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
+  });
+
+  return res.data;
+}
+export async function getPreviewText(id: string) {
+  const res = await api.get(`/files/${id}/preview`, {
+    responseType: "text",
+  });
+  return res.data as string;
+}
+
+export function getDownloadUrl(id: string) {
+  return `${api.defaults.baseURL}/files/${id}/download`;
+}
+
+export function getPreviewUrl(id: string) {
+  return `${api.defaults.baseURL}/files/${id}/preview`;
+}
