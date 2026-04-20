@@ -107,3 +107,26 @@ export function getPreviewUrl(id: string) {
 export function getFolderDownloadUrl(id: string) {
   return `${api.defaults.baseURL}/files/${id}/download-folder`;
 }
+
+export async function listTrash() {
+  const res = await api.get("/files/trash");
+  return res.data as {
+    ok: boolean;
+    items: FileItem[];
+  };
+}
+
+export async function restoreItem(id: string) {
+  const res = await api.post(`/files/${id}/restore`);
+  return res.data;
+}
+
+export async function hardDeleteItem(id: string) {
+  const res = await api.delete(`/files/${id}/hard`);
+  return res.data;
+}
+
+export async function emptyTrash() {
+  const res = await api.delete("/files/trash/empty");
+  return res.data;
+}

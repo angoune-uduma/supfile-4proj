@@ -4,6 +4,7 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { BlurView } from "expo-blur";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import TrashScreen from "../screens/TrashScreen";
 
 import DashboardScreen from "../screens/DashboardScreen";
 import ProfileScreen from "../screens/ProfileScreen";
@@ -12,6 +13,7 @@ import FilesScreen from "../screens/FilesScreen";
 type AppTabsParamList = {
   Dashboard: undefined;
   Files: undefined;
+  Trash: undefined;
   Profile: undefined;
 };
 
@@ -53,6 +55,7 @@ function GlassTabBar({ state, descriptors, navigation }: any) {
               if (route.name === "Dashboard") iconName = isFocused ? "grid" : "grid-outline";
               if (route.name === "Files") iconName = isFocused ? "folder" : "folder-outline";
               if (route.name === "Profile") iconName = isFocused ? "person" : "person-outline";
+              if (route.name === "Trash") iconName = isFocused ? "trash" : "trash-outline";
 
               return (
                 <Pressable key={route.key} onPress={onPress} style={styles.item}>
@@ -100,7 +103,9 @@ export default function AppNavigator() {
     >
       <Tab.Screen name="Dashboard" component={DashboardScreen} />
       <Tab.Screen name="Files" component={FilesScreen} />
+      <Tab.Screen name="Trash" component={TrashScreen} />
       <Tab.Screen name="Profile" component={ProfileScreen} />
+
     </Tab.Navigator>
   );
 }

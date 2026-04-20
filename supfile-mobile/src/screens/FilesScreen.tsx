@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useFocusEffect } from "@react-navigation/native";
+import { useCallback } from "react";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
@@ -236,6 +238,12 @@ export default function FilesScreen() {
   useEffect(() => {
     loadFolder(null);
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadFolder(currentParentId);
+    }, [currentParentId])
+  );
 
   async function handleCreateFolder() {
     if (!folderName.trim()) return;
