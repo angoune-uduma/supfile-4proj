@@ -1,5 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system/legacy";
+import * as Sharing from "expo-sharing";
+import { getDownloadUrl, getFolderDownloadUrl } from "../services/files";
 import { uploadFile } from "../services/files";
 import { WebView } from "react-native-webview";
 import { getAccessToken } from "../services/secureStore";
@@ -69,6 +72,8 @@ export default function FilesScreen() {
   const [previewToken, setPreviewToken] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
 
+  const [downloading, setDownloading] = useState(false);
+
   const [uploading, setUploading] = useState(false);
 
   const sortedItems = useMemo(() => {
@@ -78,6 +83,58 @@ export default function FilesScreen() {
       return a.originalName.localeCompare(b.originalName);
     });
   }, [items]);
+
+  async function handleDownload(item: FileItem) {
+    try {
+      setDownloading(true);
+
+      const token = await getAccessToken();
+      if (!token) {
+        Alert.alert("Erreur", "Session expirée. Reconnecte-toi.");
+        return;
+      }
+
+      const safeName = decodeName(item.originalName).replace(/[\\/:*?"<>|]+/g, "_");
+      const fileName =
+        item.type === "folder"
+          ? `${safeName}.zip`
+          : safeName || `download-${item.id}`;
+
+      const downloadUrl =
+        item.type === "folder"
+          ? getFolderDownloadUrl(item.id)
+          : getDownloadUrl(item.id);
+
+      const targetUri = `${FileSystem.cacheDirectory}${fileName}`;
+
+      const result = await FileSystem.downloadAsync(downloadUrl, targetUri, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const canShare = await Sharing.isAvailableAsync();
+
+      if (canShare) {
+        await Sharing.shareAsync(result.uri, {
+          mimeType:
+            item.type === "folder"
+              ? "application/zip"
+              : item.mimeType || "application/octet-stream",
+          dialogTitle: decodeName(item.originalName),
+        });
+      } else {
+        Alert.alert("Téléchargement terminé", `Fichier enregistré : ${result.uri}`);
+      }
+    } catch (e: any) {
+      Alert.alert(
+        "Erreur",
+        e?.message || "Téléchargement impossible."
+      );
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   function isTextFile(item: FileItem) {
     return (
@@ -456,15 +513,36 @@ export default function FilesScreen() {
                   </View>
                 </Pressable>
 
-                <View style={{ flexDirection: "row", gap: 8, marginTop: 14 }}>
+                <View style={{ flexDirection: "row", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
+                  <Pressable
+                    onPress={() => handleDownload(item)}
+                    disabled={downloading}
+                    style={{
+                      flex: 1,
+                      minWidth: 90,
+                      paddingVertical: 10,
+                      borderRadius: 12,
+                      alignItems: "center",
+                      backgroundColor: "rgba(96,165,250,0.18)",
+                      borderWidth: 1,
+                      borderColor: "rgba(96,165,250,0.35)",
+                      opacity: downloading ? 0.6 : 1,
+                    }}
+                  >
+                    <Text style={{ color: theme.colors.text, fontWeight: "700" }}>
+                      {downloading ? "..." : "Télécharger"}
+                    </Text>
+                  </Pressable>
+
                   <Pressable
                     onPress={() => {
                       setRenameTarget(item);
-                      setRenameValue(item.originalName);
+                      setRenameValue(decodeName(item.originalName));
                       setRenameOpen(true);
                     }}
                     style={{
                       flex: 1,
+                      minWidth: 90,
                       paddingVertical: 10,
                       borderRadius: 12,
                       alignItems: "center",
@@ -480,6 +558,7 @@ export default function FilesScreen() {
                     onPress={() => handleDelete(item)}
                     style={{
                       flex: 1,
+                      minWidth: 90,
                       paddingVertical: 10,
                       borderRadius: 12,
                       alignItems: "center",

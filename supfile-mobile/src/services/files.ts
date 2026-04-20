@@ -103,3 +103,7 @@ export function getDownloadUrl(id: string) {
 export function getPreviewUrl(id: string) {
   return `${api.defaults.baseURL}/files/${id}/preview`;
 }
+
+export function getFolderDownloadUrl(id: string) {
+  return `${api.defaults.baseURL}/files/${id}/download-folder`;
+}
