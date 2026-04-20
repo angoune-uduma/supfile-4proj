@@ -33,6 +33,7 @@ import {
   listFiles,
   renameItem,
   softDeleteItem,
+  moveItem,
 } from "../services/files";
 
 function formatSize(bytes: number) {
@@ -73,6 +74,13 @@ export default function FilesScreen() {
   const [previewTextContent, setPreviewTextContent] = useState("");
   const [previewToken, setPreviewToken] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+
+  const [moveOpen, setMoveOpen] = useState(false);
+  const [moveTarget, setMoveTarget] = useState<FileItem | null>(null);
+  const [moveFolders, setMoveFolders] = useState<FileItem[]>([]);
+  const [moveCurrentParentId, setMoveCurrentParentId] = useState<string | null>(null);
+  const [moveBreadcrumbs, setMoveBreadcrumbs] = useState<BreadcrumbItem[]>([]);
+  const [moveLoading, setMoveLoading] = useState(false);
 
   const [downloading, setDownloading] = useState(false);
 
@@ -309,6 +317,78 @@ export default function FilesScreen() {
         },
       ]
     );
+  }
+
+  async function loadMoveFolders(parentId?: string | null) {
+    try {
+      setMoveLoading(true);
+
+      const data = await listFiles(parentId ?? null);
+
+      const foldersOnly = (data.items || []).filter(
+        (item) => item.type === "folder" && item.id !== moveTarget?.id
+      );
+
+      setMoveFolders(foldersOnly);
+      setMoveCurrentParentId(parentId ?? null);
+
+      if (parentId) {
+        const bc = await getBreadcrumbs(parentId);
+        setMoveBreadcrumbs(bc.path || []);
+      } else {
+        setMoveBreadcrumbs([]);
+      }
+    } catch (e: any) {
+      Alert.alert(
+        "Erreur",
+        e?.response?.data?.error ||
+          e?.response?.data?.message ||
+          "Impossible de charger les dossiers."
+      );
+    } finally {
+      setMoveLoading(false);
+    }
+  }
+
+  function openMoveModal(item: FileItem) {
+    setMoveTarget(item);
+    setMoveOpen(true);
+    loadMoveFolders(null);
+  }
+
+  function closeMoveModal() {
+    setMoveOpen(false);
+    setMoveTarget(null);
+    setMoveFolders([]);
+    setMoveCurrentParentId(null);
+    setMoveBreadcrumbs([]);
+    setMoveLoading(false);
+  }
+
+  async function handleConfirmMove(targetParentId: string | null) {
+    if (!moveTarget) return;
+
+    try {
+      await moveItem(moveTarget.id, targetParentId);
+      closeMoveModal();
+      await loadFolder(currentParentId);
+      Alert.alert("Succès", "Élément déplacé avec succès.");
+    } catch (e: any) {
+      Alert.alert(
+        "Erreur",
+        e?.response?.data?.error ||
+          e?.response?.data?.message ||
+          "Déplacement impossible."
+      );
+    }
+  }
+
+  function goBackMoveFolder() {
+    if (moveBreadcrumbs.length >= 2) {
+      loadMoveFolders(moveBreadcrumbs[moveBreadcrumbs.length - 2].id);
+    } else {
+      loadMoveFolders(null);
+    }
   }
   function closePreview() {
     setPreviewOpen(false);
@@ -561,6 +641,21 @@ export default function FilesScreen() {
                   >
                     <Text style={{ color: theme.colors.text, fontWeight: "700" }}>Renommer</Text>
                   </Pressable>
+                    <Pressable
+                      onPress={() => openMoveModal(item)}
+                      style={{
+                        flex: 1,
+                        minWidth: 90,
+                        paddingVertical: 10,
+                        borderRadius: 12,
+                        alignItems: "center",
+                        backgroundColor: "rgba(255,255,255,0.06)",
+                        borderWidth: 1,
+                        borderColor: "rgba(255,255,255,0.10)",
+                      }}
+                    >
+                      <Text style={{ color: theme.colors.text, fontWeight: "700" }}>Déplacer</Text>
+                    </Pressable>
 
                   <Pressable
                     onPress={() => handleDelete(item)}
@@ -820,6 +915,194 @@ export default function FilesScreen() {
             </View>
           </View>
         </Screen>
+      </Modal>
+      <Modal
+        visible={moveOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={closeMoveModal}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.45)",
+            justifyContent: "center",
+            padding: 20,
+          }}
+        >
+          <Panel style={{ maxHeight: "85%", padding: 16 }}>
+            <Text
+              style={{
+                color: theme.colors.text,
+                fontSize: 22,
+                fontWeight: "900",
+                marginBottom: 8,
+              }}
+            >
+              Déplacer
+            </Text>
+
+            <Text style={{ color: theme.colors.muted, marginBottom: 12 }}>
+              {moveTarget ? `Élément : ${decodeName(moveTarget.originalName)}` : ""}
+            </Text>
+
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                <Pressable
+                  onPress={() => loadMoveFolders(null)}
+                  style={{
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    borderRadius: 999,
+                    backgroundColor: "rgba(255,255,255,0.06)",
+                    borderWidth: 1,
+                    borderColor: "rgba(255,255,255,0.10)",
+                  }}
+                >
+                  <Text style={{ color: theme.colors.text, fontWeight: "700" }}>Racine</Text>
+                </Pressable>
+
+                {moveBreadcrumbs.map((crumb) => (
+                  <Pressable
+                    key={crumb.id}
+                    onPress={() => loadMoveFolders(crumb.id)}
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 8,
+                      borderRadius: 999,
+                      backgroundColor: "rgba(255,255,255,0.06)",
+                      borderWidth: 1,
+                      borderColor: "rgba(255,255,255,0.10)",
+                    }}
+                  >
+                    <Text style={{ color: theme.colors.text, fontWeight: "700" }}>
+                      {crumb.name}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </ScrollView>
+
+            <View style={{ flexDirection: "row", gap: 10, marginBottom: 12 }}>
+              <Pressable
+                onPress={() => handleConfirmMove(null)}
+                style={{
+                  flex: 1,
+                  paddingVertical: 12,
+                  borderRadius: 12,
+                  alignItems: "center",
+                  backgroundColor: "rgba(96,165,250,0.18)",
+                  borderWidth: 1,
+                  borderColor: "rgba(96,165,250,0.35)",
+                }}
+              >
+                <Text style={{ color: theme.colors.text, fontWeight: "700" }}>
+                  Déplacer à la racine
+                </Text>
+              </Pressable>
+
+              {moveCurrentParentId ? (
+                <Pressable
+                  onPress={goBackMoveFolder}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 12,
+                    borderRadius: 12,
+                    alignItems: "center",
+                    backgroundColor: "rgba(255,255,255,0.06)",
+                    borderWidth: 1,
+                    borderColor: "rgba(255,255,255,0.10)",
+                  }}
+                >
+                  <Text style={{ color: theme.colors.text, fontWeight: "700" }}>Retour</Text>
+                </Pressable>
+              ) : null}
+            </View>
+
+            {moveLoading ? (
+              <View style={{ paddingVertical: 30, alignItems: "center" }}>
+                <ActivityIndicator />
+              </View>
+            ) : moveFolders.length === 0 ? (
+              <Panel style={{ padding: 14 }}>
+                <Text style={{ color: theme.colors.muted }}>
+                  Aucun dossier disponible ici.
+                </Text>
+              </Panel>
+            ) : (
+              <ScrollView style={{ maxHeight: 320 }} showsVerticalScrollIndicator={false}>
+                {moveFolders.map((folder) => (
+                  <Panel key={folder.id} style={{ padding: 14, marginBottom: 10 }}>
+                    <Pressable onPress={() => loadMoveFolders(folder.id)}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                        <Text style={{ fontSize: 24 }}>📁</Text>
+                        <View style={{ flex: 1 }}>
+                          <Text
+                            style={{
+                              color: theme.colors.text,
+                              fontWeight: "800",
+                              fontSize: 16,
+                            }}
+                            numberOfLines={1}
+                          >
+                            {decodeName(folder.originalName)}
+                          </Text>
+                        </View>
+                      </View>
+                    </Pressable>
+
+                    <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
+                      <Pressable
+                        onPress={() => handleConfirmMove(folder.id)}
+                        style={{
+                          flex: 1,
+                          paddingVertical: 10,
+                          borderRadius: 12,
+                          alignItems: "center",
+                          backgroundColor: "rgba(96,165,250,0.95)",
+                        }}
+                      >
+                        <Text style={{ color: "rgba(0,0,0,0.85)", fontWeight: "900" }}>
+                          Déplacer ici
+                        </Text>
+                      </Pressable>
+
+                      <Pressable
+                        onPress={() => loadMoveFolders(folder.id)}
+                        style={{
+                          flex: 1,
+                          paddingVertical: 10,
+                          borderRadius: 12,
+                          alignItems: "center",
+                          backgroundColor: "rgba(255,255,255,0.06)",
+                          borderWidth: 1,
+                          borderColor: "rgba(255,255,255,0.10)",
+                        }}
+                      >
+                        <Text style={{ color: theme.colors.text, fontWeight: "700" }}>
+                          Ouvrir
+                        </Text>
+                      </Pressable>
+                    </View>
+                  </Panel>
+                ))}
+              </ScrollView>
+            )}
+
+            <Pressable
+              onPress={closeMoveModal}
+              style={{
+                marginTop: 14,
+                paddingVertical: 12,
+                borderRadius: 12,
+                alignItems: "center",
+                backgroundColor: "rgba(255,255,255,0.06)",
+              }}
+            >
+              <Text style={{ color: theme.colors.text, fontWeight: "700" }}>Fermer</Text>
+            </Pressable>
+          </Panel>
+        </View>
       </Modal>
     </Screen>
   );
