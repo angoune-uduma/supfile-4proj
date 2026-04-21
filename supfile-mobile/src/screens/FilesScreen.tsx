@@ -89,6 +89,12 @@ export default function FilesScreen() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadingFileName, setUploadingFileName] = useState("");
 
+ const [searchTerm, setSearchTerm] = useState("");
+ const [showFilters, setShowFilters] = useState(false);
+ const [typeFilter, setTypeFilter] = useState<"all" | "file" | "folder">("all");
+ const [searchOpen, setSearchOpen] = useState(false);
+ const [filtersOpen, setFiltersOpen] = useState(false);
+
   const sortedItems = useMemo(() => {
     return [...items].sort((a, b) => {
       if (a.type === "folder" && b.type !== "folder") return -1;
@@ -471,6 +477,97 @@ export default function FilesScreen() {
           <Text style={{ color: theme.colors.muted }}>
             Gère tes dossiers et fichiers.
           </Text>
+          <View style={{ gap: 10, marginTop: 6 }}>
+
+            {/* Ligne search + bouton filtre */}
+            <View style={{ flexDirection: "row", gap: 8 }}>
+
+              {/* Champ recherche */}
+              <TextInput
+                value={searchTerm}
+                onChangeText={setSearchTerm}
+                placeholder="Rechercher..."
+                placeholderTextColor="rgba(255,255,255,0.35)"
+                style={{
+                  flex: 1,
+                  backgroundColor: "rgba(255,255,255,0.06)",
+                  borderWidth: 1,
+                  borderColor: "rgba(255,255,255,0.10)",
+                  paddingHorizontal: 14,
+                  paddingVertical: 12,
+                  borderRadius: 14,
+                  color: theme.colors.text,
+                }}
+              />
+
+              {/* Bouton filtres */}
+              <Pressable
+                onPress={() => setFiltersOpen((prev) => !prev)}
+                style={{
+                  paddingHorizontal: 16,
+                  justifyContent: "center",
+                  borderRadius: 14,
+                  backgroundColor: "rgba(255,255,255,0.06)",
+                  borderWidth: 1,
+                  borderColor: "rgba(255,255,255,0.10)",
+                }}
+              >
+                <Text style={{ color: theme.colors.text, fontWeight: "800" }}>
+                  {filtersOpen ? "Fermer" : "Filtres"}
+                </Text>
+              </Pressable>
+
+            </View>
+
+            {/* Zone filtres dépliable */}
+            {filtersOpen ? (
+              <Panel style={{ padding: 12 }}>
+                <Text style={{ color: theme.colors.text, fontWeight: "800", marginBottom: 10 }}>
+                  Type
+                </Text>
+
+                <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+                  {["all", "file", "folder"].map((type) => (
+                    <Pressable
+                      key={type}
+                      onPress={() => setTypeFilter(type as any)}
+                      style={{
+                        paddingHorizontal: 12,
+                        paddingVertical: 8,
+                        borderRadius: 999,
+                        backgroundColor:
+                          typeFilter === type
+                            ? "rgba(96,165,250,0.95)"
+                            : "rgba(255,255,255,0.06)",
+                        borderWidth: 1,
+                        borderColor:
+                          typeFilter === type
+                            ? "rgba(96,165,250,0.95)"
+                            : "rgba(255,255,255,0.10)",
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color:
+                            typeFilter === type
+                              ? "rgba(0,0,0,0.85)"
+                              : theme.colors.text,
+                          fontWeight: "800",
+                        }}
+                      >
+                        {type === "all"
+                          ? "Tous"
+                          : type === "file"
+                          ? "Fichiers"
+                          : "Dossiers"}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </Panel>
+            ) : null}
+
+          </View>
 
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             <View style={{ flexDirection: "row", gap: 8 }}>
