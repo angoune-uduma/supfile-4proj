@@ -86,6 +86,9 @@ export default function FilesScreen() {
 
   const [uploading, setUploading] = useState(false);
 
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadingFileName, setUploadingFileName] = useState("");
+
   const sortedItems = useMemo(() => {
     return [...items].sort((a, b) => {
       if (a.type === "folder" && b.type !== "folder") return -1;
@@ -192,6 +195,8 @@ export default function FilesScreen() {
       if (!picked) return;
 
       setUploading(true);
+      setUploadProgress(0);
+      setUploadingFileName(decodeName(picked.name));
 
       await uploadFile(
         {
@@ -199,7 +204,10 @@ export default function FilesScreen() {
           name: picked.name,
           mimeType: picked.mimeType,
         },
-        currentParentId
+        currentParentId,
+        (percent) => {
+          setUploadProgress(percent);
+        }
       );
 
       await loadFolder(currentParentId);
@@ -211,6 +219,8 @@ export default function FilesScreen() {
       );
     } finally {
       setUploading(false);
+      setUploadProgress(0);
+      setUploadingFileName("");
     }
   }
 
@@ -318,6 +328,13 @@ export default function FilesScreen() {
       ]
     );
   }
+
+   function handleShare(item: FileItem) {
+     Alert.alert(
+       "Partager",
+       `Fonctionnalité bientôt disponible pour : ${decodeName(item.originalName)}`
+     );
+   }
 
   async function loadMoveFolders(parentId?: string | null) {
     try {
@@ -547,6 +564,36 @@ export default function FilesScreen() {
               </Pressable>
             ) : null}
           </View>
+          {uploading ? (
+            <Panel style={{ marginTop: 10, padding: 14 }}>
+              <Text style={{ color: theme.colors.text, fontWeight: "800", marginBottom: 8 }}>
+                Upload en cours{uploadingFileName ? ` : ${uploadingFileName}` : ""}
+              </Text>
+
+              <View
+                style={{
+                  height: 10,
+                  borderRadius: 999,
+                  backgroundColor: "rgba(255,255,255,0.08)",
+                  overflow: "hidden",
+                  borderWidth: 1,
+                  borderColor: "rgba(255,255,255,0.10)",
+                }}
+              >
+                <View
+                  style={{
+                    height: "100%",
+                    width: `${uploadProgress}%`,
+                    backgroundColor: "rgba(96,165,250,0.95)",
+                  }}
+                />
+              </View>
+
+              <Text style={{ color: theme.colors.muted, marginTop: 8, fontWeight: "700" }}>
+                {uploadProgress}%
+              </Text>
+            </Panel>
+          ) : null}
         </View>
 
         {loading ? (
@@ -655,6 +702,23 @@ export default function FilesScreen() {
                       }}
                     >
                       <Text style={{ color: theme.colors.text, fontWeight: "700" }}>Déplacer</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => handleShare(item)}
+                      style={{
+                        flex: 1,
+                        minWidth: 90,
+                        paddingVertical: 10,
+                        borderRadius: 12,
+                        alignItems: "center",
+                        backgroundColor: "rgba(34,197,94,0.18)",
+                        borderWidth: 1,
+                        borderColor: "rgba(34,197,94,0.35)",
+                      }}
+                    >
+                      <Text style={{ color: "#bbf7d0", fontWeight: "700" }}>
+                        Partager
+                      </Text>
                     </Pressable>
 
                   <Pressable

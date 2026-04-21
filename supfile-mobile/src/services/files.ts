@@ -67,7 +67,8 @@ export async function uploadFile(
     name: string;
     mimeType?: string | null;
   },
-  parentId?: string | null
+  parentId?: string | null,
+  onProgress?: (percent: number) => void
 ) {
   const formData = new FormData();
 
@@ -84,6 +85,15 @@ export async function uploadFile(
   const res = await api.post("/files", formData, {
     headers: {
       "Content-Type": "multipart/form-data",
+    },
+    onUploadProgress: (progressEvent) => {
+      const total = progressEvent.total ?? 0;
+      const loaded = progressEvent.loaded ?? 0;
+
+      if (!total) return;
+
+      const percent = Math.round((loaded / total) * 100);
+      onProgress?.(percent);
     },
   });
 
