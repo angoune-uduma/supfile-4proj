@@ -11,21 +11,21 @@ const sharesRoutes = require("./routes/shares.routes");
 
 const app = express();
 
-"ici renseignés les ip des machines hébergeant le front "
-const allowedOrigins = [
-  "http://localhost:5173",
-  "http://192.168.111.1:5173",
-  "http://172.20.10.3:5173",
-  "http://172.20.10.4:5173",
-  "http://172.20.10.3:8081",
-  "http://localhost:8081",
-  "http://192.168.1.76:5173",
-];
+const allowedOrigins = (process.env.CORS_ORIGINS || "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+const isDev = process.env.NODE_ENV !== "production";
 
 app.use(
   cors({
     origin: function (origin, callback) {
       if (!origin) return callback(null, true);
+
+      if (isDev) {
+        return callback(null, true);
+      }
 
       if (allowedOrigins.includes(origin)) {
         return callback(null, true);
