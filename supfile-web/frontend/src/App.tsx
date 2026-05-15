@@ -80,6 +80,8 @@ export default function App({ mode, toggleTheme }: AppProps) {
       {/* oauth success PUBLIC */}
       <Route path="/oauth/success" element={<AuthSuccess />} />
 
+      <Route path="/public/:token" element={<PublicSharePage />} />
+
       {/* routes protégées */}
       <Route
         path="/*"
@@ -92,7 +94,6 @@ export default function App({ mode, toggleTheme }: AppProps) {
 
       {/* fallback global */}
       <Route path="*" element={<Navigate to="/login" replace />} />
-      <Route path="/public/:token" element={<PublicSharePage />} />
     </Routes>
   );
 }

@@ -159,10 +159,20 @@ export default function PublicSharePage() {
                 </Button>
               )}
 
-              {accessReady && item.type === "folder" && (
-                <Alert severity="info">
-                  Le partage public de dossier est reconnu, mais l’exploration publique du dossier n’est pas encore implémentée.
-                </Alert>
+              {accessReady && item.type === "folder" && downloadUrl && (
+                <Stack spacing={2}>
+                  <Alert severity="success">
+                    Ce dossier est prêt à être téléchargé au format ZIP.
+                  </Alert>
+
+                  <Button
+                    variant="contained"
+                    startIcon={<DownloadRoundedIcon />}
+                    onClick={() => window.open(downloadUrl, "_blank")}
+                  >
+                    Télécharger le dossier ZIP
+                  </Button>
+                </Stack>
               )}
 
               {accessReady && item.type === "file" && previewUrl && (

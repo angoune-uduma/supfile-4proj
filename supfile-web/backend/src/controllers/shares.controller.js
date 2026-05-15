@@ -1,3 +1,4 @@
+const archiver = require("archiver");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
@@ -315,8 +316,59 @@ exports.publicFile = async (req, res) => {
       return res.status(410).json({ error: "SHARE_EXPIRED" });
     }
 
-    if (share.nodeId.type !== "file") {
-      return res.status(400).json({ error: "PUBLIC_FOLDER_STREAM_NOT_SUPPORTED" });
+    if (share.nodeId.type === "folder") {
+      const safeName = (share.nodeId.originalName || "folder").replace(/[\\/:*?"<>|]+/g, "_");
+
+      res.setHeader("Content-Type", "application/zip");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${encodeURIComponent(safeName)}.zip"`
+      );
+
+      const archive = archiver("zip", { zlib: { level: 9 } });
+
+      archive.on("error", (err) => {
+        throw err;
+      });
+
+      archive.pipe(res);
+
+      const queue = [
+        {
+          folderId: share.nodeId._id,
+          relativePath: safeName,
+        },
+      ];
+
+      while (queue.length > 0) {
+        const current = queue.shift();
+
+        const children = await FileItem.find({
+          deletedAt: null,
+          parentId: current.folderId,
+        }).select("_id type originalName storageRelPath");
+
+        for (const child of children) {
+          const childPath = `${current.relativePath}/${child.originalName}`;
+
+          if (child.type === "folder") {
+            archive.append("", { name: `${childPath}/` });
+            queue.push({
+              folderId: child._id,
+              relativePath: childPath,
+            });
+          } else if (child.type === "file" && child.storageRelPath) {
+            const absPath = getAbsPathFromRel(child.storageRelPath);
+
+            if (fs.existsSync(absPath)) {
+              archive.file(absPath, { name: childPath });
+            }
+          }
+        }
+      }
+
+      await archive.finalize();
+      return;
     }
 
     const absPath = getAbsPathFromRel(share.nodeId.storageRelPath);
@@ -362,6 +414,8 @@ exports.publicFile = async (req, res) => {
     });
   }
 };
+
+
 exports.internalFile = async (req, res) => {
   try {
     if (!req.user?._id) return res.status(401).json({ error: "UNAUTHORIZED" });
