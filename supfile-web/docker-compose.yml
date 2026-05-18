@@ -23,6 +23,8 @@ services:
     depends_on:
       - mongodb
     restart: unless-stopped
+    command: npm start
+
 
   frontend:
     build: ./frontend
@@ -33,7 +35,6 @@ services:
       - ./frontend/.env
     volumes:
       - ./frontend/src:/app/src
-      - ./frontend/public:/app/public
       - /app/node_modules
     depends_on:
       - backend

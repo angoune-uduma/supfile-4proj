@@ -7,10 +7,9 @@ services:
     env_file:
       - ./frontend/.env
     environment:
-      - CHOKIDAR_USEPOLLING=true
-      - WATCHPACK_POLLING=true
+      - CHOKIDAR_USEPOLLING=false
+      - WATCHPACK_POLLING=false
     volumes:
       - ./frontend/src:/app/src
-      - ./frontend/public:/app/public
       - /app/node_modules
     restart: unless-stopped

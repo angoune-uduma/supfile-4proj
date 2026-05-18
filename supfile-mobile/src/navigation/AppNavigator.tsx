@@ -5,16 +5,18 @@ import { BlurView } from "expo-blur";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import TrashScreen from "../screens/TrashScreen";
+import SharedScreen from "../screens/SharedScreen";
 
 import DashboardScreen from "../screens/DashboardScreen";
 import ProfileScreen from "../screens/ProfileScreen";
 import FilesScreen from "../screens/FilesScreen";
 
 type AppTabsParamList = {
-  Dashboard: undefined;
-  Files: undefined;
-  Trash: undefined;
-  Profile: undefined;
+ Dashboard: undefined;
+ Files: undefined;
+ Shared: undefined;
+ Trash: undefined;
+ Profile: undefined;
 };
 
 const Tab = createBottomTabNavigator<AppTabsParamList>();
@@ -54,6 +56,7 @@ function GlassTabBar({ state, descriptors, navigation }: any) {
               let iconName = "grid-outline";
               if (route.name === "Dashboard") iconName = isFocused ? "grid" : "grid-outline";
               if (route.name === "Files") iconName = isFocused ? "folder" : "folder-outline";
+              if (route.name === "Shared") iconName = isFocused ? "share-social" : "share-social-outline";
               if (route.name === "Profile") iconName = isFocused ? "person" : "person-outline";
               if (route.name === "Trash") iconName = isFocused ? "trash" : "trash-outline";
 
@@ -103,6 +106,7 @@ export default function AppNavigator() {
     >
       <Tab.Screen name="Dashboard" component={DashboardScreen} />
       <Tab.Screen name="Files" component={FilesScreen} />
+      <Tab.Screen name="Shared" component={SharedScreen} options={{ title: "Partagés" }} />
       <Tab.Screen name="Trash" component={TrashScreen} />
       <Tab.Screen name="Profile" component={ProfileScreen} />
 

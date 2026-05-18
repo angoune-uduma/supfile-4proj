@@ -1,14 +1,9 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useFocusEffect } from "@react-navigation/native";
-import { useCallback } from "react";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
-import { getDownloadUrl, getFolderDownloadUrl } from "../services/files";
-import { uploadFile } from "../services/files";
 import { WebView } from "react-native-webview";
-import { getAccessToken } from "../services/secureStore";
-import { getPreviewText, getPreviewUrl } from "../services/files";
 import { Video, ResizeMode } from "expo-av";
 import {
   ActivityIndicator,
@@ -18,22 +13,31 @@ import {
   Pressable,
   RefreshControl,
   ScrollView,
+  Share,
   Text,
   TextInput,
   View,
 } from "react-native";
+
 import Screen from "../components/Screen";
 import Panel from "../components/Panel";
 import { theme } from "../theme/theme";
+import { createPublicShare, createInternalShare } from "../services/shares";
+import { getAccessToken } from "../services/secureStore";
 import {
   BreadcrumbItem,
   FileItem,
   createFolder,
   getBreadcrumbs,
+  getDownloadUrl,
+  getFolderDownloadUrl,
+  getPreviewText,
+  getPreviewUrl,
   listFiles,
+  moveItem,
   renameItem,
   softDeleteItem,
-  moveItem,
+  uploadFile,
 } from "../services/files";
 
 function formatSize(bytes: number) {
@@ -52,6 +56,14 @@ function getEmoji(item: FileItem) {
   if (item.mimeType === "application/pdf") return "📄";
   if (item.mimeType?.startsWith("text/")) return "📝";
   return "📦";
+}
+
+function decodeName(name: string) {
+  try {
+    return decodeURIComponent(name);
+  } catch {
+    return name;
+  }
 }
 
 export default function FilesScreen() {
@@ -82,84 +94,85 @@ export default function FilesScreen() {
   const [moveBreadcrumbs, setMoveBreadcrumbs] = useState<BreadcrumbItem[]>([]);
   const [moveLoading, setMoveLoading] = useState(false);
 
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareTarget, setShareTarget] = useState<FileItem | null>(null);
+  const [shareExpiresAt, setShareExpiresAt] = useState("");
+  const [sharePassword, setSharePassword] = useState("");
+  const [shareToEmail, setShareToEmail] = useState("");
+  const [shareLink, setShareLink] = useState("");
+  const [shareLoading, setShareLoading] = useState(false);
+
   const [downloading, setDownloading] = useState(false);
-
   const [uploading, setUploading] = useState(false);
-
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadingFileName, setUploadingFileName] = useState("");
 
- const [searchTerm, setSearchTerm] = useState("");
- const [showFilters, setShowFilters] = useState(false);
- const [typeFilter, setTypeFilter] = useState<"all" | "file" | "folder">("all");
- const [searchOpen, setSearchOpen] = useState(false);
- const [filtersOpen, setFiltersOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [typeFilter, setTypeFilter] = useState<"all" | "file" | "folder">("all");
 
-  const sortedItems = useMemo(() => {
-    return [...items].sort((a, b) => {
-      if (a.type === "folder" && b.type !== "folder") return -1;
-      if (a.type !== "folder" && b.type === "folder") return 1;
-      return a.originalName.localeCompare(b.originalName);
-    });
-  }, [items]);
+  const visibleItems = useMemo(() => {
+    const cleanSearch = searchTerm.trim().toLowerCase();
 
-  async function handleDownload(item: FileItem) {
-    try {
-      setDownloading(true);
+    return [...items]
+      .filter((item) => {
+        if (typeFilter !== "all" && item.type !== typeFilter) return false;
 
-      const token = await getAccessToken();
-      if (!token) {
-        Alert.alert("Erreur", "Session expirée. Reconnecte-toi.");
-        return;
-      }
+        if (!cleanSearch) return true;
 
-      const safeName = decodeName(item.originalName).replace(/[\\/:*?"<>|]+/g, "_");
-      const fileName =
-        item.type === "folder"
-          ? `${safeName}.zip`
-          : safeName || `download-${item.id}`;
+        const name = decodeName(item.originalName).toLowerCase();
+        const mime = item.mimeType?.toLowerCase() || "";
 
-      const downloadUrl =
-        item.type === "folder"
-          ? getFolderDownloadUrl(item.id)
-          : getDownloadUrl(item.id);
-
-      const targetUri = `${FileSystem.cacheDirectory}${fileName}`;
-
-      const result = await FileSystem.downloadAsync(downloadUrl, targetUri, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        return name.includes(cleanSearch) || mime.includes(cleanSearch);
+      })
+      .sort((a, b) => {
+        if (a.type === "folder" && b.type !== "folder") return -1;
+        if (a.type !== "folder" && b.type === "folder") return 1;
+        return decodeName(a.originalName).localeCompare(decodeName(b.originalName));
       });
+  }, [items, searchTerm, typeFilter]);
 
-      const canShare = await Sharing.isAvailableAsync();
+  async function loadFolder(parentId?: string | null, isRefresh = false) {
+    try {
+      setError(null);
+      if (isRefresh) setRefreshing(true);
+      else setLoading(true);
 
-      if (canShare) {
-        await Sharing.shareAsync(result.uri, {
-          mimeType:
-            item.type === "folder"
-              ? "application/zip"
-              : item.mimeType || "application/octet-stream",
-          dialogTitle: decodeName(item.originalName),
-        });
+      const data = await listFiles(parentId ?? null);
+      setItems(data.items || []);
+      setCurrentParentId(parentId ?? null);
+
+      if (parentId) {
+        const bc = await getBreadcrumbs(parentId);
+        setBreadcrumbs(bc.path || []);
       } else {
-        Alert.alert("Téléchargement terminé", `Fichier enregistré : ${result.uri}`);
+        setBreadcrumbs([]);
       }
     } catch (e: any) {
-      Alert.alert(
-        "Erreur",
-        e?.message || "Téléchargement impossible."
+      setError(
+        e?.response?.data?.error ||
+          e?.response?.data?.message ||
+          e?.message ||
+          "Impossible de charger les fichiers."
       );
     } finally {
-      setDownloading(false);
+      setLoading(false);
+      setRefreshing(false);
     }
   }
 
+  useEffect(() => {
+    loadFolder(null);
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadFolder(currentParentId);
+    }, [currentParentId])
+  );
+
   function isTextFile(item: FileItem) {
-    return (
-      item.mimeType?.startsWith("text/") ||
-      item.mimeType === "application/json"
-    );
+    return item.mimeType?.startsWith("text/") || item.mimeType === "application/json";
   }
 
   function isImageFile(item: FileItem) {
@@ -186,6 +199,44 @@ export default function FilesScreen() {
       isVideoFile(item) ||
       isAudioFile(item)
     );
+  }
+
+  async function handleDownload(item: FileItem) {
+    try {
+      setDownloading(true);
+
+      const token = await getAccessToken();
+      if (!token) {
+        Alert.alert("Erreur", "Session expirée. Reconnecte-toi.");
+        return;
+      }
+
+      const safeName = decodeName(item.originalName).replace(/[\\/:*?"<>|]+/g, "_");
+      const fileName = item.type === "folder" ? `${safeName}.zip` : safeName || `download-${item.id}`;
+      const downloadUrl = item.type === "folder" ? getFolderDownloadUrl(item.id) : getDownloadUrl(item.id);
+      const targetUri = `${FileSystem.cacheDirectory}${fileName}`;
+
+      const result = await FileSystem.downloadAsync(downloadUrl, targetUri, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const canShare = await Sharing.isAvailableAsync();
+
+      if (canShare) {
+        await Sharing.shareAsync(result.uri, {
+          mimeType: item.type === "folder" ? "application/zip" : item.mimeType || "application/octet-stream",
+          dialogTitle: decodeName(item.originalName),
+        });
+      } else {
+        Alert.alert("Téléchargement terminé", `Fichier enregistré : ${result.uri}`);
+      }
+    } catch (e: any) {
+      Alert.alert("Erreur", e?.message || "Téléchargement impossible.");
+    } finally {
+      setDownloading(false);
+    }
   }
 
   async function handlePickAndUpload() {
@@ -230,45 +281,6 @@ export default function FilesScreen() {
     }
   }
 
-  async function loadFolder(parentId?: string | null, isRefresh = false) {
-    try {
-      setError(null);
-      if (isRefresh) setRefreshing(true);
-      else setLoading(true);
-
-      const data = await listFiles(parentId ?? null);
-      setItems(data.items || []);
-      setCurrentParentId(parentId ?? null);
-
-      if (parentId) {
-        const bc = await getBreadcrumbs(parentId);
-        setBreadcrumbs(bc.path || []);
-      } else {
-        setBreadcrumbs([]);
-      }
-    } catch (e: any) {
-      setError(
-        e?.response?.data?.error ||
-          e?.response?.data?.message ||
-          e?.message ||
-          "Impossible de charger les fichiers."
-      );
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }
-
-  useEffect(() => {
-    loadFolder(null);
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      loadFolder(currentParentId);
-    }, [currentParentId])
-  );
-
   async function handleCreateFolder() {
     if (!folderName.trim()) return;
 
@@ -302,52 +314,129 @@ export default function FilesScreen() {
     }
   }
 
-   function decodeName(name: string) {
-     try {
-       return decodeURIComponent(name);
-     } catch {
-       return name;
-     }
-   }
-
   async function handleDelete(item: FileItem) {
-    Alert.alert(
-      "Supprimer",
-      `Voulez-vous supprimer "${decodeName(item.originalName)}" ?`,
-      [
-        { text: "Annuler", style: "cancel" },
-        {
-          text: "Supprimer",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await softDeleteItem(item.id);
-              await loadFolder(currentParentId);
-            } catch (e: any) {
-              Alert.alert(
-                "Erreur",
-                e?.response?.data?.error || e?.response?.data?.message || "Suppression impossible."
-              );
-            }
-          },
+    Alert.alert("Supprimer", `Voulez-vous supprimer "${decodeName(item.originalName)}" ?`, [
+      { text: "Annuler", style: "cancel" },
+      {
+        text: "Supprimer",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await softDeleteItem(item.id);
+            await loadFolder(currentParentId);
+          } catch (e: any) {
+            Alert.alert(
+              "Erreur",
+              e?.response?.data?.error || e?.response?.data?.message || "Suppression impossible."
+            );
+          }
         },
-      ]
-    );
+      },
+    ]);
   }
 
-   function handleShare(item: FileItem) {
-     Alert.alert(
-       "Partager",
-       `Fonctionnalité bientôt disponible pour : ${decodeName(item.originalName)}`
-     );
-   }
+  function handleShare(item: FileItem) {
+    if (item.isShared) {
+      Alert.alert("Info", "Vous ne pouvez pas repartager un élément qui vous a été partagé.");
+      return;
+    }
+
+    setShareTarget(item);
+    setShareExpiresAt("");
+    setSharePassword("");
+    setShareToEmail("");
+    setShareLink("");
+    setShareOpen(true);
+  }
+
+  function closeShareModal() {
+    setShareOpen(false);
+    setShareTarget(null);
+    setShareExpiresAt("");
+    setSharePassword("");
+    setShareToEmail("");
+    setShareLink("");
+    setShareLoading(false);
+  }
+
+  async function handleCreatePublicShare() {
+    if (!shareTarget) return;
+
+    try {
+      setShareLoading(true);
+
+      const share = await createPublicShare({
+        nodeId: shareTarget.id,
+        expiresAt: shareExpiresAt.trim() || undefined,
+        password: sharePassword.trim() || undefined,
+      });
+
+      const url = share?.url || "";
+      setShareLink(url);
+
+      if (url) {
+        await Share.share({
+          message: url,
+          url,
+        });
+      }
+    } catch (e: any) {
+      Alert.alert(
+        "Erreur",
+        e?.response?.data?.error || e?.response?.data?.message || e?.message || "Création du lien public impossible."
+      );
+    } finally {
+      setShareLoading(false);
+    }
+  }
+
+  async function handleCreateInternalShare() {
+    if (!shareTarget) return;
+
+    if (!shareToEmail.trim()) {
+      Alert.alert("Erreur", "Renseigne l’email du destinataire.");
+      return;
+    }
+
+    try {
+      setShareLoading(true);
+
+      await createInternalShare({
+        nodeId: shareTarget.id,
+        nodeType: shareTarget.type,
+        toEmail: shareToEmail.trim(),
+      });
+
+      Alert.alert("Succès", "Partage interne créé avec succès.");
+      closeShareModal();
+    } catch (e: any) {
+      Alert.alert(
+        "Erreur",
+        e?.response?.data?.error || e?.response?.data?.message || e?.message || "Partage interne impossible."
+      );
+    } finally {
+      setShareLoading(false);
+    }
+  }
+
+  async function handleShareGeneratedLink() {
+    if (!shareLink) return;
+
+    try {
+      await Share.share({
+        message: shareLink,
+        url: shareLink,
+      });
+    } catch {
+      Alert.alert("Erreur", "Impossible de partager le lien.");
+    }
+  }
 
   async function loadMoveFolders(parentId?: string | null) {
     try {
       setMoveLoading(true);
 
       const data = await listFiles(parentId ?? null);
-
       const foldersOnly = (data.items || []).filter(
         (item) => item.type === "folder" && item.id !== moveTarget?.id
       );
@@ -364,9 +453,7 @@ export default function FilesScreen() {
     } catch (e: any) {
       Alert.alert(
         "Erreur",
-        e?.response?.data?.error ||
-          e?.response?.data?.message ||
-          "Impossible de charger les dossiers."
+        e?.response?.data?.error || e?.response?.data?.message || "Impossible de charger les dossiers."
       );
     } finally {
       setMoveLoading(false);
@@ -399,9 +486,7 @@ export default function FilesScreen() {
     } catch (e: any) {
       Alert.alert(
         "Erreur",
-        e?.response?.data?.error ||
-          e?.response?.data?.message ||
-          "Déplacement impossible."
+        e?.response?.data?.error || e?.response?.data?.message || "Déplacement impossible."
       );
     }
   }
@@ -413,6 +498,7 @@ export default function FilesScreen() {
       loadMoveFolders(null);
     }
   }
+
   function closePreview() {
     setPreviewOpen(false);
     setPreviewItem(null);
@@ -467,22 +553,16 @@ export default function FilesScreen() {
 
   return (
     <Screen>
-
-
       <View style={{ flex: 1 }}>
         <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8, gap: 10 }}>
           <Text style={{ color: theme.colors.text, fontSize: 32, fontWeight: "900" }}>
             Fichiers
           </Text>
-          <Text style={{ color: theme.colors.muted }}>
-            Gère tes dossiers et fichiers.
-          </Text>
+
+          <Text style={{ color: theme.colors.muted }}>Gère tes dossiers et fichiers.</Text>
+
           <View style={{ gap: 10, marginTop: 6 }}>
-
-            {/* Ligne search + bouton filtre */}
             <View style={{ flexDirection: "row", gap: 8 }}>
-
-              {/* Champ recherche */}
               <TextInput
                 value={searchTerm}
                 onChangeText={setSearchTerm}
@@ -500,7 +580,6 @@ export default function FilesScreen() {
                 }}
               />
 
-              {/* Bouton filtres */}
               <Pressable
                 onPress={() => setFiltersOpen((prev) => !prev)}
                 style={{
@@ -516,10 +595,8 @@ export default function FilesScreen() {
                   {filtersOpen ? "Fermer" : "Filtres"}
                 </Text>
               </Pressable>
-
             </View>
 
-            {/* Zone filtres dépliable */}
             {filtersOpen ? (
               <Panel style={{ padding: 12 }}>
                 <Text style={{ color: theme.colors.text, fontWeight: "800", marginBottom: 10 }}>
@@ -527,46 +604,34 @@ export default function FilesScreen() {
                 </Text>
 
                 <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-                  {["all", "file", "folder"].map((type) => (
+                  {(["all", "file", "folder"] as const).map((type) => (
                     <Pressable
                       key={type}
-                      onPress={() => setTypeFilter(type as any)}
+                      onPress={() => setTypeFilter(type)}
                       style={{
                         paddingHorizontal: 12,
                         paddingVertical: 8,
                         borderRadius: 999,
                         backgroundColor:
-                          typeFilter === type
-                            ? "rgba(96,165,250,0.95)"
-                            : "rgba(255,255,255,0.06)",
+                          typeFilter === type ? "rgba(96,165,250,0.95)" : "rgba(255,255,255,0.06)",
                         borderWidth: 1,
                         borderColor:
-                          typeFilter === type
-                            ? "rgba(96,165,250,0.95)"
-                            : "rgba(255,255,255,0.10)",
+                          typeFilter === type ? "rgba(96,165,250,0.95)" : "rgba(255,255,255,0.10)",
                       }}
                     >
                       <Text
                         style={{
-                          color:
-                            typeFilter === type
-                              ? "rgba(0,0,0,0.85)"
-                              : theme.colors.text,
+                          color: typeFilter === type ? "rgba(0,0,0,0.85)" : theme.colors.text,
                           fontWeight: "800",
                         }}
                       >
-                        {type === "all"
-                          ? "Tous"
-                          : type === "file"
-                          ? "Fichiers"
-                          : "Dossiers"}
+                        {type === "all" ? "Tous" : type === "file" ? "Fichiers" : "Dossiers"}
                       </Text>
                     </Pressable>
                   ))}
                 </View>
               </Panel>
             ) : null}
-
           </View>
 
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -598,9 +663,7 @@ export default function FilesScreen() {
                     borderColor: "rgba(255,255,255,0.10)",
                   }}
                 >
-                  <Text style={{ color: theme.colors.text, fontWeight: "700" }}>
-                    {crumb.name}
-                  </Text>
+                  <Text style={{ color: theme.colors.text, fontWeight: "700" }}>{crumb.name}</Text>
                 </Pressable>
               ))}
             </View>
@@ -661,6 +724,7 @@ export default function FilesScreen() {
               </Pressable>
             ) : null}
           </View>
+
           {uploading ? (
             <Panel style={{ marginTop: 10, padding: 14 }}>
               <Text style={{ color: theme.colors.text, fontWeight: "800", marginBottom: 8 }}>
@@ -699,7 +763,7 @@ export default function FilesScreen() {
           </View>
         ) : (
           <FlatList
-            data={sortedItems}
+            data={visibleItems}
             keyExtractor={(item) => item.id}
             contentContainerStyle={{ padding: 16, paddingBottom: 120, gap: 12 }}
             refreshControl={
@@ -785,38 +849,38 @@ export default function FilesScreen() {
                   >
                     <Text style={{ color: theme.colors.text, fontWeight: "700" }}>Renommer</Text>
                   </Pressable>
-                    <Pressable
-                      onPress={() => openMoveModal(item)}
-                      style={{
-                        flex: 1,
-                        minWidth: 90,
-                        paddingVertical: 10,
-                        borderRadius: 12,
-                        alignItems: "center",
-                        backgroundColor: "rgba(255,255,255,0.06)",
-                        borderWidth: 1,
-                        borderColor: "rgba(255,255,255,0.10)",
-                      }}
-                    >
-                      <Text style={{ color: theme.colors.text, fontWeight: "700" }}>Déplacer</Text>
-                    </Pressable>
-                    <Pressable
-                      onPress={() => handleShare(item)}
-                      style={{
-                        flex: 1,
-                        minWidth: 90,
-                        paddingVertical: 10,
-                        borderRadius: 12,
-                        alignItems: "center",
-                        backgroundColor: "rgba(34,197,94,0.18)",
-                        borderWidth: 1,
-                        borderColor: "rgba(34,197,94,0.35)",
-                      }}
-                    >
-                      <Text style={{ color: "#bbf7d0", fontWeight: "700" }}>
-                        Partager
-                      </Text>
-                    </Pressable>
+
+                  <Pressable
+                    onPress={() => openMoveModal(item)}
+                    style={{
+                      flex: 1,
+                      minWidth: 90,
+                      paddingVertical: 10,
+                      borderRadius: 12,
+                      alignItems: "center",
+                      backgroundColor: "rgba(255,255,255,0.06)",
+                      borderWidth: 1,
+                      borderColor: "rgba(255,255,255,0.10)",
+                    }}
+                  >
+                    <Text style={{ color: theme.colors.text, fontWeight: "700" }}>Déplacer</Text>
+                  </Pressable>
+
+                  <Pressable
+                    onPress={() => handleShare(item)}
+                    style={{
+                      flex: 1,
+                      minWidth: 90,
+                      paddingVertical: 10,
+                      borderRadius: 12,
+                      alignItems: "center",
+                      backgroundColor: "rgba(34,197,94,0.18)",
+                      borderWidth: 1,
+                      borderColor: "rgba(34,197,94,0.35)",
+                    }}
+                  >
+                    <Text style={{ color: "#bbf7d0", fontWeight: "700" }}>Partager</Text>
+                  </Pressable>
 
                   <Pressable
                     onPress={() => handleDelete(item)}
@@ -838,136 +902,453 @@ export default function FilesScreen() {
             )}
           />
         )}
-
-        <Modal visible={createOpen} transparent animationType="fade" onRequestClose={() => setCreateOpen(false)}>
-          <View
-            style={{
-              flex: 1,
-              backgroundColor: "rgba(0,0,0,0.45)",
-              justifyContent: "center",
-              padding: 20,
-            }}
-          >
-            <Panel style={{ padding: 16 }}>
-              <Text style={{ color: theme.colors.text, fontSize: 22, fontWeight: "900", marginBottom: 12 }}>
-                Nouveau dossier
-              </Text>
-
-              <TextInput
-                value={folderName}
-                onChangeText={setFolderName}
-                placeholder="Nom du dossier"
-                placeholderTextColor="rgba(255,255,255,0.35)"
-                style={{
-                  backgroundColor: "rgba(255,255,255,0.06)",
-                  borderWidth: 1,
-                  borderColor: "rgba(255,255,255,0.08)",
-                  paddingHorizontal: 14,
-                  paddingVertical: 12,
-                  borderRadius: 14,
-                  color: theme.colors.text,
-                }}
-              />
-
-              <View style={{ flexDirection: "row", gap: 10, marginTop: 14 }}>
-                <Pressable
-                  onPress={() => setCreateOpen(false)}
-                  style={{
-                    flex: 1,
-                    paddingVertical: 12,
-                    borderRadius: 12,
-                    alignItems: "center",
-                    backgroundColor: "rgba(255,255,255,0.06)",
-                  }}
-                >
-                  <Text style={{ color: theme.colors.text, fontWeight: "700" }}>Annuler</Text>
-                </Pressable>
-
-                <Pressable
-                  onPress={handleCreateFolder}
-                  style={{
-                    flex: 1,
-                    paddingVertical: 12,
-                    borderRadius: 12,
-                    alignItems: "center",
-                    backgroundColor: "rgba(96,165,250,0.95)",
-                  }}
-                >
-                  <Text style={{ color: "rgba(0,0,0,0.85)", fontWeight: "900" }}>Créer</Text>
-                </Pressable>
-              </View>
-            </Panel>
-          </View>
-        </Modal>
-
-        <Modal visible={renameOpen} transparent animationType="fade" onRequestClose={() => setRenameOpen(false)}>
-          <View
-            style={{
-              flex: 1,
-              backgroundColor: "rgba(0,0,0,0.45)",
-              justifyContent: "center",
-              padding: 20,
-            }}
-          >
-            <Panel style={{ padding: 16 }}>
-              <Text style={{ color: theme.colors.text, fontSize: 22, fontWeight: "900", marginBottom: 12 }}>
-                Renommer
-              </Text>
-
-              <TextInput
-                value={renameValue}
-                onChangeText={setRenameValue}
-                placeholder="Nouveau nom"
-                placeholderTextColor="rgba(255,255,255,0.35)"
-                style={{
-                  backgroundColor: "rgba(255,255,255,0.06)",
-                  borderWidth: 1,
-                  borderColor: "rgba(255,255,255,0.08)",
-                  paddingHorizontal: 14,
-                  paddingVertical: 12,
-                  borderRadius: 14,
-                  color: theme.colors.text,
-                }}
-              />
-
-              <View style={{ flexDirection: "row", gap: 10, marginTop: 14 }}>
-                <Pressable
-                  onPress={() => setRenameOpen(false)}
-                  style={{
-                    flex: 1,
-                    paddingVertical: 12,
-                    borderRadius: 12,
-                    alignItems: "center",
-                    backgroundColor: "rgba(255,255,255,0.06)",
-                  }}
-                >
-                  <Text style={{ color: theme.colors.text, fontWeight: "700" }}>Annuler</Text>
-                </Pressable>
-
-                <Pressable
-                  onPress={handleRename}
-                  style={{
-                    flex: 1,
-                    paddingVertical: 12,
-                    borderRadius: 12,
-                    alignItems: "center",
-                    backgroundColor: "rgba(96,165,250,0.95)",
-                  }}
-                >
-                  <Text style={{ color: "rgba(0,0,0,0.85)", fontWeight: "900" }}>Enregistrer</Text>
-                </Pressable>
-              </View>
-            </Panel>
-          </View>
-        </Modal>
       </View>
 
-      <Modal
-        visible={previewOpen}
-        transparent={false}
-        animationType="slide"
-        onRequestClose={closePreview}
-      >
+      <Modal visible={createOpen} transparent animationType="fade" onRequestClose={() => setCreateOpen(false)}>
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.45)",
+            justifyContent: "center",
+            padding: 20,
+          }}
+        >
+          <Panel style={{ padding: 16 }}>
+            <Text style={{ color: theme.colors.text, fontSize: 22, fontWeight: "900", marginBottom: 12 }}>
+              Nouveau dossier
+            </Text>
+
+            <TextInput
+              value={folderName}
+              onChangeText={setFolderName}
+              placeholder="Nom du dossier"
+              placeholderTextColor="rgba(255,255,255,0.35)"
+              style={{
+                backgroundColor: "rgba(255,255,255,0.06)",
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.08)",
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                borderRadius: 14,
+                color: theme.colors.text,
+              }}
+            />
+
+            <View style={{ flexDirection: "row", gap: 10, marginTop: 14 }}>
+              <Pressable
+                onPress={() => setCreateOpen(false)}
+                style={{
+                  flex: 1,
+                  paddingVertical: 12,
+                  borderRadius: 12,
+                  alignItems: "center",
+                  backgroundColor: "rgba(255,255,255,0.06)",
+                }}
+              >
+                <Text style={{ color: theme.colors.text, fontWeight: "700" }}>Annuler</Text>
+              </Pressable>
+
+              <Pressable
+                onPress={handleCreateFolder}
+                style={{
+                  flex: 1,
+                  paddingVertical: 12,
+                  borderRadius: 12,
+                  alignItems: "center",
+                  backgroundColor: "rgba(96,165,250,0.95)",
+                }}
+              >
+                <Text style={{ color: "rgba(0,0,0,0.85)", fontWeight: "900" }}>Créer</Text>
+              </Pressable>
+            </View>
+          </Panel>
+        </View>
+      </Modal>
+
+      <Modal visible={renameOpen} transparent animationType="fade" onRequestClose={() => setRenameOpen(false)}>
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.45)",
+            justifyContent: "center",
+            padding: 20,
+          }}
+        >
+          <Panel style={{ padding: 16 }}>
+            <Text style={{ color: theme.colors.text, fontSize: 22, fontWeight: "900", marginBottom: 12 }}>
+              Renommer
+            </Text>
+
+            <TextInput
+              value={renameValue}
+              onChangeText={setRenameValue}
+              placeholder="Nouveau nom"
+              placeholderTextColor="rgba(255,255,255,0.35)"
+              style={{
+                backgroundColor: "rgba(255,255,255,0.06)",
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.08)",
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                borderRadius: 14,
+                color: theme.colors.text,
+              }}
+            />
+
+            <View style={{ flexDirection: "row", gap: 10, marginTop: 14 }}>
+              <Pressable
+                onPress={() => setRenameOpen(false)}
+                style={{
+                  flex: 1,
+                  paddingVertical: 12,
+                  borderRadius: 12,
+                  alignItems: "center",
+                  backgroundColor: "rgba(255,255,255,0.06)",
+                }}
+              >
+                <Text style={{ color: theme.colors.text, fontWeight: "700" }}>Annuler</Text>
+              </Pressable>
+
+              <Pressable
+                onPress={handleRename}
+                style={{
+                  flex: 1,
+                  paddingVertical: 12,
+                  borderRadius: 12,
+                  alignItems: "center",
+                  backgroundColor: "rgba(96,165,250,0.95)",
+                }}
+              >
+                <Text style={{ color: "rgba(0,0,0,0.85)", fontWeight: "900" }}>Enregistrer</Text>
+              </Pressable>
+            </View>
+          </Panel>
+        </View>
+      </Modal>
+
+      <Modal visible={shareOpen} transparent animationType="slide" onRequestClose={closeShareModal}>
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.45)",
+            justifyContent: "center",
+            padding: 20,
+          }}
+        >
+          <Panel style={{ maxHeight: "85%", padding: 16 }}>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={{ color: theme.colors.text, fontSize: 22, fontWeight: "900", marginBottom: 8 }}>
+                Partager
+              </Text>
+
+              <Text style={{ color: theme.colors.muted, marginBottom: 14 }}>
+                {shareTarget ? decodeName(shareTarget.originalName) : ""}
+              </Text>
+
+              <Text style={{ color: theme.colors.text, fontWeight: "800", marginBottom: 8 }}>
+                Lien public
+              </Text>
+
+              <TextInput
+                value={shareExpiresAt}
+                onChangeText={setShareExpiresAt}
+                placeholder="Expiration optionnelle, ex: 2026-06-30T23:59:59.000Z"
+                placeholderTextColor="rgba(255,255,255,0.35)"
+                style={{
+                  backgroundColor: "rgba(255,255,255,0.06)",
+                  borderWidth: 1,
+                  borderColor: "rgba(255,255,255,0.08)",
+                  paddingHorizontal: 14,
+                  paddingVertical: 12,
+                  borderRadius: 14,
+                  color: theme.colors.text,
+                  marginBottom: 10,
+                }}
+              />
+
+              <TextInput
+                value={sharePassword}
+                onChangeText={setSharePassword}
+                placeholder="Mot de passe optionnel"
+                placeholderTextColor="rgba(255,255,255,0.35)"
+                secureTextEntry
+                style={{
+                  backgroundColor: "rgba(255,255,255,0.06)",
+                  borderWidth: 1,
+                  borderColor: "rgba(255,255,255,0.08)",
+                  paddingHorizontal: 14,
+                  paddingVertical: 12,
+                  borderRadius: 14,
+                  color: theme.colors.text,
+                  marginBottom: 10,
+                }}
+              />
+
+              <Pressable
+                onPress={handleCreatePublicShare}
+                disabled={shareLoading}
+                style={{
+                  paddingVertical: 12,
+                  borderRadius: 12,
+                  alignItems: "center",
+                  backgroundColor: "rgba(34,197,94,0.18)",
+                  borderWidth: 1,
+                  borderColor: "rgba(34,197,94,0.35)",
+                  opacity: shareLoading ? 0.6 : 1,
+                  marginBottom: 12,
+                }}
+              >
+                <Text style={{ color: "#bbf7d0", fontWeight: "900" }}>
+                  {shareLoading ? "Création..." : "Créer un lien public"}
+                </Text>
+              </Pressable>
+
+              {shareLink ? (
+                <Panel style={{ padding: 12, marginBottom: 16 }}>
+                  <Text style={{ color: theme.colors.muted, marginBottom: 8 }}>Lien généré :</Text>
+                  <Text style={{ color: theme.colors.text, fontWeight: "700" }}>{shareLink}</Text>
+
+                  <Pressable
+                    onPress={handleShareGeneratedLink}
+                    style={{
+                      marginTop: 12,
+                      paddingVertical: 10,
+                      borderRadius: 12,
+                      alignItems: "center",
+                      backgroundColor: "rgba(96,165,250,0.95)",
+                    }}
+                  >
+                    <Text style={{ color: "rgba(0,0,0,0.85)", fontWeight: "900" }}>
+                      Partager ce lien
+                    </Text>
+                  </Pressable>
+                </Panel>
+              ) : null}
+
+              <Text style={{ color: theme.colors.text, fontWeight: "800", marginBottom: 8 }}>
+                Partage interne
+              </Text>
+
+              <TextInput
+                value={shareToEmail}
+                onChangeText={setShareToEmail}
+                placeholder="Email du destinataire"
+                placeholderTextColor="rgba(255,255,255,0.35)"
+                autoCapitalize="none"
+                keyboardType="email-address"
+                style={{
+                  backgroundColor: "rgba(255,255,255,0.06)",
+                  borderWidth: 1,
+                  borderColor: "rgba(255,255,255,0.08)",
+                  paddingHorizontal: 14,
+                  paddingVertical: 12,
+                  borderRadius: 14,
+                  color: theme.colors.text,
+                  marginBottom: 10,
+                }}
+              />
+
+              <Pressable
+                onPress={handleCreateInternalShare}
+                disabled={shareLoading}
+                style={{
+                  paddingVertical: 12,
+                  borderRadius: 12,
+                  alignItems: "center",
+                  backgroundColor: "rgba(96,165,250,0.18)",
+                  borderWidth: 1,
+                  borderColor: "rgba(96,165,250,0.35)",
+                  opacity: shareLoading ? 0.6 : 1,
+                }}
+              >
+                <Text style={{ color: theme.colors.text, fontWeight: "900" }}>
+                  {shareLoading ? "Partage..." : "Partager en interne"}
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={closeShareModal}
+                style={{
+                  marginTop: 14,
+                  paddingVertical: 12,
+                  borderRadius: 12,
+                  alignItems: "center",
+                  backgroundColor: "rgba(255,255,255,0.06)",
+                }}
+              >
+                <Text style={{ color: theme.colors.text, fontWeight: "700" }}>Fermer</Text>
+              </Pressable>
+            </ScrollView>
+          </Panel>
+        </View>
+      </Modal>
+
+      <Modal visible={moveOpen} transparent animationType="slide" onRequestClose={closeMoveModal}>
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.45)",
+            justifyContent: "center",
+            padding: 20,
+          }}
+        >
+          <Panel style={{ maxHeight: "85%", padding: 16 }}>
+            <Text style={{ color: theme.colors.text, fontSize: 22, fontWeight: "900", marginBottom: 8 }}>
+              Déplacer
+            </Text>
+
+            <Text style={{ color: theme.colors.muted, marginBottom: 12 }}>
+              {moveTarget ? `Élément : ${decodeName(moveTarget.originalName)}` : ""}
+            </Text>
+
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                <Pressable
+                  onPress={() => loadMoveFolders(null)}
+                  style={{
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    borderRadius: 999,
+                    backgroundColor: "rgba(255,255,255,0.06)",
+                    borderWidth: 1,
+                    borderColor: "rgba(255,255,255,0.10)",
+                  }}
+                >
+                  <Text style={{ color: theme.colors.text, fontWeight: "700" }}>Racine</Text>
+                </Pressable>
+
+                {moveBreadcrumbs.map((crumb) => (
+                  <Pressable
+                    key={crumb.id}
+                    onPress={() => loadMoveFolders(crumb.id)}
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 8,
+                      borderRadius: 999,
+                      backgroundColor: "rgba(255,255,255,0.06)",
+                      borderWidth: 1,
+                      borderColor: "rgba(255,255,255,0.10)",
+                    }}
+                  >
+                    <Text style={{ color: theme.colors.text, fontWeight: "700" }}>{crumb.name}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </ScrollView>
+
+            <View style={{ flexDirection: "row", gap: 10, marginBottom: 12 }}>
+              <Pressable
+                onPress={() => handleConfirmMove(null)}
+                style={{
+                  flex: 1,
+                  paddingVertical: 12,
+                  borderRadius: 12,
+                  alignItems: "center",
+                  backgroundColor: "rgba(96,165,250,0.18)",
+                  borderWidth: 1,
+                  borderColor: "rgba(96,165,250,0.35)",
+                }}
+              >
+                <Text style={{ color: theme.colors.text, fontWeight: "700" }}>Déplacer à la racine</Text>
+              </Pressable>
+
+              {moveCurrentParentId ? (
+                <Pressable
+                  onPress={goBackMoveFolder}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 12,
+                    borderRadius: 12,
+                    alignItems: "center",
+                    backgroundColor: "rgba(255,255,255,0.06)",
+                    borderWidth: 1,
+                    borderColor: "rgba(255,255,255,0.10)",
+                  }}
+                >
+                  <Text style={{ color: theme.colors.text, fontWeight: "700" }}>Retour</Text>
+                </Pressable>
+              ) : null}
+            </View>
+
+            {moveLoading ? (
+              <View style={{ paddingVertical: 30, alignItems: "center" }}>
+                <ActivityIndicator />
+              </View>
+            ) : moveFolders.length === 0 ? (
+              <Panel style={{ padding: 14 }}>
+                <Text style={{ color: theme.colors.muted }}>Aucun dossier disponible ici.</Text>
+              </Panel>
+            ) : (
+              <ScrollView style={{ maxHeight: 320 }} showsVerticalScrollIndicator={false}>
+                {moveFolders.map((folder) => (
+                  <Panel key={folder.id} style={{ padding: 14, marginBottom: 10 }}>
+                    <Pressable onPress={() => loadMoveFolders(folder.id)}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                        <Text style={{ fontSize: 24 }}>📁</Text>
+                        <View style={{ flex: 1 }}>
+                          <Text
+                            style={{ color: theme.colors.text, fontWeight: "800", fontSize: 16 }}
+                            numberOfLines={1}
+                          >
+                            {decodeName(folder.originalName)}
+                          </Text>
+                        </View>
+                      </View>
+                    </Pressable>
+
+                    <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
+                      <Pressable
+                        onPress={() => handleConfirmMove(folder.id)}
+                        style={{
+                          flex: 1,
+                          paddingVertical: 10,
+                          borderRadius: 12,
+                          alignItems: "center",
+                          backgroundColor: "rgba(96,165,250,0.95)",
+                        }}
+                      >
+                        <Text style={{ color: "rgba(0,0,0,0.85)", fontWeight: "900" }}>
+                          Déplacer ici
+                        </Text>
+                      </Pressable>
+
+                      <Pressable
+                        onPress={() => loadMoveFolders(folder.id)}
+                        style={{
+                          flex: 1,
+                          paddingVertical: 10,
+                          borderRadius: 12,
+                          alignItems: "center",
+                          backgroundColor: "rgba(255,255,255,0.06)",
+                          borderWidth: 1,
+                          borderColor: "rgba(255,255,255,0.10)",
+                        }}
+                      >
+                        <Text style={{ color: theme.colors.text, fontWeight: "700" }}>Ouvrir</Text>
+                      </Pressable>
+                    </View>
+                  </Panel>
+                ))}
+              </ScrollView>
+            )}
+
+            <Pressable
+              onPress={closeMoveModal}
+              style={{
+                marginTop: 14,
+                paddingVertical: 12,
+                borderRadius: 12,
+                alignItems: "center",
+                backgroundColor: "rgba(255,255,255,0.06)",
+              }}
+            >
+              <Text style={{ color: theme.colors.text, fontWeight: "700" }}>Fermer</Text>
+            </Pressable>
+          </Panel>
+        </View>
+      </Modal>
+
+      <Modal visible={previewOpen} transparent={false} animationType="slide" onRequestClose={closePreview}>
         <Screen>
           <View style={{ flex: 1 }}>
             <View
@@ -1009,9 +1390,7 @@ export default function FilesScreen() {
                 {previewLoading ? (
                   <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
                     <ActivityIndicator />
-                    <Text style={{ color: theme.colors.muted, marginTop: 10 }}>
-                      Chargement...
-                    </Text>
+                    <Text style={{ color: theme.colors.muted, marginTop: 10 }}>Chargement...</Text>
                   </View>
                 ) : previewItem && isTextFile(previewItem) ? (
                   <ScrollView
@@ -1019,13 +1398,7 @@ export default function FilesScreen() {
                     contentContainerStyle={{ paddingBottom: 24 }}
                     showsVerticalScrollIndicator={false}
                   >
-                    <Text
-                      style={{
-                        color: theme.colors.text,
-                        fontSize: 15,
-                        lineHeight: 22,
-                      }}
-                    >
+                    <Text style={{ color: theme.colors.text, fontSize: 15, lineHeight: 22 }}>
                       {previewTextContent}
                     </Text>
                   </ScrollView>
@@ -1067,203 +1440,13 @@ export default function FilesScreen() {
                   />
                 ) : (
                   <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-                    <Text style={{ color: theme.colors.muted }}>
-                      Impossible d’afficher ce fichier.
-                    </Text>
+                    <Text style={{ color: theme.colors.muted }}>Impossible d’afficher ce fichier.</Text>
                   </View>
                 )}
               </Panel>
             </View>
           </View>
         </Screen>
-      </Modal>
-      <Modal
-        visible={moveOpen}
-        transparent
-        animationType="slide"
-        onRequestClose={closeMoveModal}
-      >
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: "rgba(0,0,0,0.45)",
-            justifyContent: "center",
-            padding: 20,
-          }}
-        >
-          <Panel style={{ maxHeight: "85%", padding: 16 }}>
-            <Text
-              style={{
-                color: theme.colors.text,
-                fontSize: 22,
-                fontWeight: "900",
-                marginBottom: 8,
-              }}
-            >
-              Déplacer
-            </Text>
-
-            <Text style={{ color: theme.colors.muted, marginBottom: 12 }}>
-              {moveTarget ? `Élément : ${decodeName(moveTarget.originalName)}` : ""}
-            </Text>
-
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
-              <View style={{ flexDirection: "row", gap: 8 }}>
-                <Pressable
-                  onPress={() => loadMoveFolders(null)}
-                  style={{
-                    paddingHorizontal: 12,
-                    paddingVertical: 8,
-                    borderRadius: 999,
-                    backgroundColor: "rgba(255,255,255,0.06)",
-                    borderWidth: 1,
-                    borderColor: "rgba(255,255,255,0.10)",
-                  }}
-                >
-                  <Text style={{ color: theme.colors.text, fontWeight: "700" }}>Racine</Text>
-                </Pressable>
-
-                {moveBreadcrumbs.map((crumb) => (
-                  <Pressable
-                    key={crumb.id}
-                    onPress={() => loadMoveFolders(crumb.id)}
-                    style={{
-                      paddingHorizontal: 12,
-                      paddingVertical: 8,
-                      borderRadius: 999,
-                      backgroundColor: "rgba(255,255,255,0.06)",
-                      borderWidth: 1,
-                      borderColor: "rgba(255,255,255,0.10)",
-                    }}
-                  >
-                    <Text style={{ color: theme.colors.text, fontWeight: "700" }}>
-                      {crumb.name}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-            </ScrollView>
-
-            <View style={{ flexDirection: "row", gap: 10, marginBottom: 12 }}>
-              <Pressable
-                onPress={() => handleConfirmMove(null)}
-                style={{
-                  flex: 1,
-                  paddingVertical: 12,
-                  borderRadius: 12,
-                  alignItems: "center",
-                  backgroundColor: "rgba(96,165,250,0.18)",
-                  borderWidth: 1,
-                  borderColor: "rgba(96,165,250,0.35)",
-                }}
-              >
-                <Text style={{ color: theme.colors.text, fontWeight: "700" }}>
-                  Déplacer à la racine
-                </Text>
-              </Pressable>
-
-              {moveCurrentParentId ? (
-                <Pressable
-                  onPress={goBackMoveFolder}
-                  style={{
-                    flex: 1,
-                    paddingVertical: 12,
-                    borderRadius: 12,
-                    alignItems: "center",
-                    backgroundColor: "rgba(255,255,255,0.06)",
-                    borderWidth: 1,
-                    borderColor: "rgba(255,255,255,0.10)",
-                  }}
-                >
-                  <Text style={{ color: theme.colors.text, fontWeight: "700" }}>Retour</Text>
-                </Pressable>
-              ) : null}
-            </View>
-
-            {moveLoading ? (
-              <View style={{ paddingVertical: 30, alignItems: "center" }}>
-                <ActivityIndicator />
-              </View>
-            ) : moveFolders.length === 0 ? (
-              <Panel style={{ padding: 14 }}>
-                <Text style={{ color: theme.colors.muted }}>
-                  Aucun dossier disponible ici.
-                </Text>
-              </Panel>
-            ) : (
-              <ScrollView style={{ maxHeight: 320 }} showsVerticalScrollIndicator={false}>
-                {moveFolders.map((folder) => (
-                  <Panel key={folder.id} style={{ padding: 14, marginBottom: 10 }}>
-                    <Pressable onPress={() => loadMoveFolders(folder.id)}>
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-                        <Text style={{ fontSize: 24 }}>📁</Text>
-                        <View style={{ flex: 1 }}>
-                          <Text
-                            style={{
-                              color: theme.colors.text,
-                              fontWeight: "800",
-                              fontSize: 16,
-                            }}
-                            numberOfLines={1}
-                          >
-                            {decodeName(folder.originalName)}
-                          </Text>
-                        </View>
-                      </View>
-                    </Pressable>
-
-                    <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
-                      <Pressable
-                        onPress={() => handleConfirmMove(folder.id)}
-                        style={{
-                          flex: 1,
-                          paddingVertical: 10,
-                          borderRadius: 12,
-                          alignItems: "center",
-                          backgroundColor: "rgba(96,165,250,0.95)",
-                        }}
-                      >
-                        <Text style={{ color: "rgba(0,0,0,0.85)", fontWeight: "900" }}>
-                          Déplacer ici
-                        </Text>
-                      </Pressable>
-
-                      <Pressable
-                        onPress={() => loadMoveFolders(folder.id)}
-                        style={{
-                          flex: 1,
-                          paddingVertical: 10,
-                          borderRadius: 12,
-                          alignItems: "center",
-                          backgroundColor: "rgba(255,255,255,0.06)",
-                          borderWidth: 1,
-                          borderColor: "rgba(255,255,255,0.10)",
-                        }}
-                      >
-                        <Text style={{ color: theme.colors.text, fontWeight: "700" }}>
-                          Ouvrir
-                        </Text>
-                      </Pressable>
-                    </View>
-                  </Panel>
-                ))}
-              </ScrollView>
-            )}
-
-            <Pressable
-              onPress={closeMoveModal}
-              style={{
-                marginTop: 14,
-                paddingVertical: 12,
-                borderRadius: 12,
-                alignItems: "center",
-                backgroundColor: "rgba(255,255,255,0.06)",
-              }}
-            >
-              <Text style={{ color: theme.colors.text, fontWeight: "700" }}>Fermer</Text>
-            </Pressable>
-          </Panel>
-        </View>
       </Modal>
     </Screen>
   );
