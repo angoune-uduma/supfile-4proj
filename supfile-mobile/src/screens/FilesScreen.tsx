@@ -65,7 +65,72 @@ function decodeName(name: string) {
     return name;
   }
 }
+function parseExpirationDate(value: string) {
+  const cleaned = value.trim();
 
+  const match = cleaned.match(
+    /^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})$/
+  );
+
+  if (!match) return null;
+
+  const [, dayText, monthText, yearText, hourText, minuteText] = match;
+
+  const day = Number(dayText);
+  const month = Number(monthText);
+  const year = Number(yearText);
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+
+  if (month < 1 || month > 12) return null;
+  if (day < 1 || day > 31) return null;
+  if (hour < 0 || hour > 23) return null;
+  if (minute < 0 || minute > 59) return null;
+
+  const date = new Date(year, month - 1, day, hour, minute, 0, 0);
+
+  if (Number.isNaN(date.getTime())) return null;
+
+  const isSameDate =
+    date.getFullYear() === year &&
+    date.getMonth() === month - 1 &&
+    date.getDate() === day &&
+    date.getHours() === hour &&
+    date.getMinutes() === minute;
+
+  if (!isSameDate) return null;
+
+  return date;
+}
+function validateSharePassword(password: string) {
+  const cleaned = password.trim();
+
+  if (!cleaned) {
+    return null;
+  }
+
+  if (cleaned.length < 8) {
+    return "Le mot de passe doit contenir au moins 8 caractères.";
+  }
+
+  if (!/[A-Z]/.test(cleaned)) {
+    return "Le mot de passe doit contenir au moins une majuscule.";
+  }
+
+  if (!/[a-z]/.test(cleaned)) {
+    return "Le mot de passe doit contenir au moins une minuscule.";
+  }
+
+  if (!/[0-9]/.test(cleaned)) {
+    return "Le mot de passe doit contenir au moins un chiffre.";
+  }
+
+  if (!/[^A-Za-z0-9]/.test(cleaned)) {
+    return "Le mot de passe doit contenir au moins un caractère spécial.";
+  }
+
+  return null;
+}
 export default function FilesScreen() {
   const [items, setItems] = useState<FileItem[]>([]);
   const [currentParentId, setCurrentParentId] = useState<string | null>(null);
@@ -149,13 +214,19 @@ export default function FilesScreen() {
         setBreadcrumbs([]);
       }
     } catch (e: any) {
-      setError(
-        e?.response?.data?.error ||
+        const apiError =
+          e?.response?.data?.error ||
           e?.response?.data?.message ||
           e?.message ||
-          "Impossible de charger les fichiers."
-      );
-    } finally {
+          "Impossible de charger les fichiers.";
+
+        if (apiError === "INVALID_TOKEN") {
+          setError("Session expirée. Déconnecte-toi puis reconnecte-toi.");
+          return;
+        }
+
+        setError(apiError);
+      } finally {
       setLoading(false);
       setRefreshing(false);
     }
@@ -359,41 +430,76 @@ export default function FilesScreen() {
     setShareLoading(false);
   }
 
-  async function handleCreatePublicShare() {
-    if (!shareTarget) return;
+ async function handleCreatePublicShare() {
+   if (!shareTarget) return;
 
-    try {
-      setShareLoading(true);
+   const cleanedExpiresAt = shareExpiresAt.trim();
+   let expiresAtToSend: string | undefined = undefined;
 
-      const share = await createPublicShare({
-        nodeId: shareTarget.id,
-        expiresAt: shareExpiresAt.trim() || undefined,
-        password: sharePassword.trim() || undefined,
-      });
+   if (cleanedExpiresAt) {
+     const expirationDate = parseExpirationDate(cleanedExpiresAt);
 
-      const url = share?.url || "";
-      setShareLink(url);
+     if (!expirationDate) {
+       Alert.alert(
+         "Date invalide",
+         "Utilise le format JJ/MM/AAAA HH:mm, par exemple : 30/06/2026 23:59"
+       );
+       return;
+     }
 
-      if (url) {
-        await Share.share({
-          message: url,
-          url,
-        });
-      }
-    } catch (e: any) {
-      Alert.alert(
-        "Erreur",
-        e?.response?.data?.error || e?.response?.data?.message || e?.message || "Création du lien public impossible."
-      );
-    } finally {
-      setShareLoading(false);
+     if (expirationDate.getTime() <= Date.now()) {
+       Alert.alert(
+         "Date invalide",
+         "La date d’expiration doit être dans le futur."
+       );
+       return;
+     }
+
+     expiresAtToSend = expirationDate.toISOString();
+   }
+    const passwordError = validateSharePassword(sharePassword);
+
+    if (passwordError) {
+      Alert.alert("Mot de passe trop faible", passwordError);
+      return;
     }
-  }
+   try {
+     setShareLoading(true);
+
+     const share = await createPublicShare({
+       nodeId: shareTarget.id,
+       expiresAt: expiresAtToSend,
+       password: sharePassword || undefined,
+     });
+
+     const url = share?.url || "";
+     setShareLink(url);
+
+     if (url) {
+       Alert.alert(
+         "Lien créé",
+         "Le lien public a été généré. Tu peux maintenant appuyer sur “Partager ce lien”."
+       );
+     }
+   } catch (e: any) {
+     Alert.alert(
+       "Erreur",
+       e?.response?.data?.error ||
+         e?.response?.data?.message ||
+         e?.message ||
+         "Création du lien public impossible."
+     );
+   } finally {
+     setShareLoading(false);
+   }
+ }
 
   async function handleCreateInternalShare() {
     if (!shareTarget) return;
 
-    if (!shareToEmail.trim()) {
+    const email = shareToEmail.trim().toLowerCase();
+
+    if (!email) {
       Alert.alert("Erreur", "Renseigne l’email du destinataire.");
       return;
     }
@@ -404,19 +510,21 @@ export default function FilesScreen() {
       await createInternalShare({
         nodeId: shareTarget.id,
         nodeType: shareTarget.type,
-        toEmail: shareToEmail.trim(),
+        toEmail: email,
       });
 
-      Alert.alert("Succès", "Partage interne créé avec succès.");
-      closeShareModal();
-    } catch (e: any) {
       Alert.alert(
-        "Erreur",
-        e?.response?.data?.error || e?.response?.data?.message || e?.message || "Partage interne impossible."
+        "Succès",
+        "Partage interne créé avec succès. Tu peux maintenant ajouter un autre destinataire."
       );
+
+      setShareToEmail("");
+    } catch (e: any) {
+      Alert.alert("Erreur", e?.message || "Partage interne impossible.");
     } finally {
       setShareLoading(false);
     }
+
   }
 
   async function handleShareGeneratedLink() {
@@ -461,6 +569,14 @@ export default function FilesScreen() {
   }
 
   function openMoveModal(item: FileItem) {
+    if (item.isShared) {
+      Alert.alert(
+        "Accès refusé",
+        "Vous ne disposez pas des droits nécessaires pour déplacer un élément partagé avec vous."
+      );
+      return;
+    }
+
     setMoveTarget(item);
     setMoveOpen(true);
     loadMoveFolders(null);
@@ -477,6 +593,15 @@ export default function FilesScreen() {
 
   async function handleConfirmMove(targetParentId: string | null) {
     if (!moveTarget) return;
+
+    if (moveTarget.isShared) {
+      Alert.alert(
+        "Accès refusé",
+        "Vous ne disposez pas des droits nécessaires pour déplacer un élément partagé avec vous."
+      );
+      closeMoveModal();
+      return;
+    }
 
     try {
       await moveItem(moveTarget.id, targetParentId);
@@ -787,24 +912,83 @@ export default function FilesScreen() {
               ) : null
             }
             renderItem={({ item }) => (
-              <Panel style={{ padding: 14, marginBottom: 12 }}>
+              <Panel
+                style={{
+                  padding: 14,
+                  marginBottom: 12,
+                  borderWidth: item.isShared ? 1.5 : 1,
+                  borderColor: item.isShared
+                    ? "rgba(168,85,247,0.55)"
+                    : "rgba(255,255,255,0.10)",
+                  backgroundColor: item.isShared
+                    ? "rgba(168,85,247,0.08)"
+                    : undefined,
+                }}
+              >
                 <Pressable onPress={() => handleOpen(item)}>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
                     <Text style={{ fontSize: 24 }}>{getEmoji(item)}</Text>
 
                     <View style={{ flex: 1 }}>
-                      <Text
-                        style={{ color: theme.colors.text, fontWeight: "800", fontSize: 16 }}
-                        numberOfLines={1}
-                      >
-                        {decodeName(item.originalName)}
-                      </Text>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                        <Text
+                          style={{
+                            color: theme.colors.text,
+                            fontWeight: "800",
+                            fontSize: 16,
+                            flex: 1,
+                          }}
+                          numberOfLines={1}
+                        >
+                          {decodeName(item.originalName)}
+                        </Text>
+
+                        {item.isShared ? (
+                          <View
+                            style={{
+                              paddingHorizontal: 10,
+                              paddingVertical: 4,
+                              borderRadius: 999,
+                              backgroundColor: "rgba(168,85,247,0.20)",
+                              borderWidth: 1,
+                              borderColor: "rgba(168,85,247,0.45)",
+                            }}
+                          >
+                            <Text
+                              style={{
+                                color: "#e9d5ff",
+                                fontSize: 12,
+                                fontWeight: "800",
+                              }}
+                            >
+                              Partagé
+                            </Text>
+                          </View>
+                        ) : null}
+                      </View>
 
                       <Text style={{ color: theme.colors.muted, marginTop: 4 }}>
                         {item.type === "folder"
-                          ? "Dossier"
+                          ? item.isShared
+                            ? "Dossier partagé avec vous"
+                            : "Dossier"
+                          : item.isShared
+                          ? `Fichier partagé avec vous • ${formatSize(item.size)}`
                           : `${item.mimeType || "Fichier"} • ${formatSize(item.size)}`}
                       </Text>
+
+                      {item.isShared ? (
+                        <Text
+                          style={{
+                            color: "#c4b5fd",
+                            marginTop: 6,
+                            fontSize: 13,
+                            fontWeight: "700",
+                          }}
+                        >
+                          Cet élément provient d’un partage interne.
+                        </Text>
+                      ) : null}
                     </View>
                   </View>
                 </Pressable>
@@ -861,10 +1045,14 @@ export default function FilesScreen() {
                       backgroundColor: "rgba(255,255,255,0.06)",
                       borderWidth: 1,
                       borderColor: "rgba(255,255,255,0.10)",
+                      opacity: item.isShared ? 0.65 : 1,
                     }}
                   >
-                    <Text style={{ color: theme.colors.text, fontWeight: "700" }}>Déplacer</Text>
+                    <Text style={{ color: theme.colors.text, fontWeight: "700" }}>
+                      Déplacer
+                    </Text>
                   </Pressable>
+
 
                   <Pressable
                     onPress={() => handleShare(item)}
@@ -1052,7 +1240,8 @@ export default function FilesScreen() {
               <TextInput
                 value={shareExpiresAt}
                 onChangeText={setShareExpiresAt}
-                placeholder="Expiration optionnelle, ex: 2026-06-30T23:59:59.000Z"
+                placeholder="Expiration optionnelle, ex: 30/06/2026 23:59"
+
                 placeholderTextColor="rgba(255,255,255,0.35)"
                 style={{
                   backgroundColor: "rgba(255,255,255,0.06)",
@@ -1065,6 +1254,9 @@ export default function FilesScreen() {
                   marginBottom: 10,
                 }}
               />
+              <Text style={{ color: theme.colors.muted, marginBottom: 10, fontSize: 12 }}>
+                Format attendu : JJ/MM/AAAA HH:mm. Exemple : 30/06/2026 23:59
+              </Text>
 
               <TextInput
                 value={sharePassword}
@@ -1083,6 +1275,10 @@ export default function FilesScreen() {
                   marginBottom: 10,
                 }}
               />
+              <Text style={{ color: theme.colors.muted, marginBottom: 10, fontSize: 12 }}>
+               Si renseigné : 8 caractères minimum, majuscule, minuscule,
+                chiffre et caractère spécial.
+              </Text>
 
               <Pressable
                 onPress={handleCreatePublicShare}
