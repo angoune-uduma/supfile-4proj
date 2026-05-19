@@ -1,53 +1,61 @@
-import React, { useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   Pressable,
+  RefreshControl,
   ScrollView,
   Text,
   View,
 } from "react-native";
+import { useNavigation } from "@react-navigation/native";
+
 import Screen from "../components/Screen";
 import Panel from "../components/Panel";
 import { theme } from "../theme/theme";
 import { useAuth } from "../store/AuthContext";
 
-// ---- Mock data (comme la web)
-const QUOTA_GB = 30;
-
-const usage = {
-  used: 12.4,
-  breakdown: [
-    { label: "Vidéos", gb: 6.2 },
-    { label: "Images", gb: 3.1 },
-    { label: "Documents", gb: 2.4 },
-    { label: "Audio", gb: 0.5 },
-    { label: "Autres", gb: 0.2 },
-  ],
-};
-
-const recentFiles = [
-  { name: "Cours-SUPFILE.pdf", type: "PDF", size: "4.2 MB", modified: "Aujourd’hui 12:41" },
-  { name: "maquette-dashboard.png", type: "Image", size: "1.1 MB", modified: "Hier 18:03" },
-  { name: "brief-projet.md", type: "Texte", size: "24 KB", modified: "Hier 16:20" },
-  { name: "video-demo.mp4", type: "Vidéo", size: "310 MB", modified: "02/12/2025" },
-  { name: "notes.txt", type: "Texte", size: "3 KB", modified: "01/12/2025" },
-];
-
-const recentShares = [
-  { target: "Lien public", item: "Cours-SUPFILE.pdf", expires: "Expire dans 3 jours" },
-  { target: "Partagé avec", item: "Dossier: Projet M1", expires: "—" },
-  { target: "Lien public", item: "video-demo.mp4", expires: "Protégé par mot de passe" },
-];
+import {
+  DashboardRecentFile,
+  DashboardUsage,
+  fetchActiveSharesCount,
+  fetchDashboardRecent,
+  fetchDashboardUsage,
+  fetchTrashCount,
+} from "../services/dashboard";
 
 function formatGb(n: number) {
   return `${n.toFixed(1)} Go`;
 }
 
-function clampPct(n: number) {
-  return Math.max(0, Math.min(100, n));
+function formatBytes(bytes: number) {
+  if (!bytes) return "—";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  if (bytes < 1024 * 1024 * 1024) {
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
-function percent(used: number, total: number) {
-  return clampPct((used / total) * 100);
+function formatDate(value?: string) {
+  if (!value) return "—";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "—";
+  }
+
+  return date.toLocaleDateString("fr-FR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
+
+function getItemTypeLabel(item: DashboardRecentFile) {
+  if (item.type === "folder") return "Dossier";
+  return "Fichier";
 }
 
 function Pill({ text }: { text: string }) {
@@ -62,7 +70,13 @@ function Pill({ text }: { text: string }) {
         backgroundColor: "rgba(255,255,255,0.06)",
       }}
     >
-      <Text style={{ color: "rgba(255,255,255,0.85)", fontWeight: "700", fontSize: 12 }}>
+      <Text
+        style={{
+          color: "rgba(255,255,255,0.85)",
+          fontWeight: "700",
+          fontSize: 12,
+        }}
+      >
         {text}
       </Text>
     </View>
@@ -72,41 +86,146 @@ function Pill({ text }: { text: string }) {
 function StatCard({
   title,
   value,
-  pill,
+  subtitle,
 }: {
   title: string;
   value: string;
-  pill?: string;
+  subtitle?: string;
 }) {
   return (
     <Panel style={{ padding: 16, gap: 10 }}>
-      <Text style={{ color: "rgba(255,255,255,0.70)", fontWeight: "700" }}>{title}</Text>
-      <Text style={{ color: theme.colors.text, fontSize: 34, fontWeight: "900" }}>{value}</Text>
-      {pill ? (
-        <Text style={{ color: "rgba(255,255,255,0.55)", fontWeight: "700" }}>{pill}</Text>
+      <Text style={{ color: "rgba(255,255,255,0.70)", fontWeight: "700" }}>
+        {title}
+      </Text>
+
+      <Text style={{ color: theme.colors.text, fontSize: 32, fontWeight: "900" }}>
+        {value}
+      </Text>
+
+      {subtitle ? (
+        <Text style={{ color: "rgba(255,255,255,0.55)", fontWeight: "700" }}>
+          {subtitle}
+        </Text>
       ) : null}
     </Panel>
   );
 }
 
-function SectionTitle({ title, subtitle, rightAction }: { title: string; subtitle?: string; rightAction?: React.ReactNode }) {
+function SectionTitle({
+  title,
+  subtitle,
+  rightAction,
+}: {
+  title: string;
+  subtitle?: string;
+  rightAction?: React.ReactNode;
+}) {
   return (
-    <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "flex-start",
+        justifyContent: "space-between",
+        gap: 12,
+      }}
+    >
       <View style={{ flex: 1 }}>
-        <Text style={{ color: theme.colors.text, fontWeight: "900", fontSize: 18 }}>{title}</Text>
+        <Text style={{ color: theme.colors.text, fontWeight: "900", fontSize: 18 }}>
+          {title}
+        </Text>
+
         {subtitle ? (
-          <Text style={{ color: "rgba(255,255,255,0.60)", marginTop: 3 }}>{subtitle}</Text>
+          <Text style={{ color: "rgba(255,255,255,0.60)", marginTop: 3 }}>
+            {subtitle}
+          </Text>
         ) : null}
       </View>
+
       {rightAction ?? null}
     </View>
   );
 }
 
 export default function DashboardScreen() {
+  const navigation = useNavigation<any>();
   const { user } = useAuth();
 
-  const usedPct = useMemo(() => percent(usage.used, QUOTA_GB), []);
+  const [usage, setUsage] = useState<DashboardUsage | null>(null);
+  const [recentFiles, setRecentFiles] = useState<DashboardRecentFile[]>([]);
+  const [activeSharesCount, setActiveSharesCount] = useState(0);
+  const [trashCount, setTrashCount] = useState(0);
+
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState("");
+
+  async function loadDashboard(isRefresh = false) {
+    try {
+      setError("");
+
+      if (isRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+
+      const [usageData, recentData, sharesCount, trashData] = await Promise.all([
+        fetchDashboardUsage(),
+        fetchDashboardRecent(5),
+        fetchActiveSharesCount(),
+        fetchTrashCount(),
+      ]);
+
+      setUsage(usageData);
+      setRecentFiles(recentData);
+      setActiveSharesCount(sharesCount);
+      setTrashCount(trashData);
+    } catch (e: any) {
+      const apiError =
+        e?.response?.data?.error ||
+        e?.response?.data?.message ||
+        e?.message ||
+        "Impossible de charger le dashboard.";
+
+      if (apiError === "INVALID_TOKEN") {
+        setError("Session expirée. Déconnecte-toi puis reconnecte-toi.");
+      } else {
+        setError(apiError);
+      }
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }
+
+  useEffect(() => {
+    loadDashboard();
+  }, []);
+
+  const breakdown = useMemo(() => {
+    if (!usage) return [];
+
+    return [
+      { label: "Vidéos", bytes: usage.byCategory.video },
+      { label: "Images", bytes: usage.byCategory.image },
+      { label: "Documents", bytes: usage.byCategory.document },
+      { label: "Audio", bytes: usage.byCategory.audio },
+      { label: "Autres", bytes: usage.byCategory.other },
+    ];
+  }, [usage]);
+
+  if (loading) {
+    return (
+      <Screen>
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+          <ActivityIndicator />
+          <Text style={{ color: theme.colors.muted, marginTop: 10 }}>
+            Chargement du dashboard...
+          </Text>
+        </View>
+      </Screen>
+    );
+  }
 
   return (
     <Screen>
@@ -114,40 +233,60 @@ export default function DashboardScreen() {
         contentContainerStyle={{
           paddingHorizontal: 16,
           paddingTop: 18,
-          paddingBottom: 28,
+          paddingBottom: 120,
           gap: 14,
         }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => loadDashboard(true)}
+          />
+        }
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
         <View style={{ gap: 6, marginBottom: 6 }}>
-          <Text style={{ color: theme.colors.text, fontSize: 44, fontWeight: "900" }}>
+          <Text style={{ color: theme.colors.text, fontSize: 40, fontWeight: "900" }}>
             Dashboard
           </Text>
 
           <Text style={{ color: "rgba(255,255,255,0.60)" }}>
-            Vue rapide de votre espace de stockage et de l’activité récente.
+            Vue rapide de votre espace de stockage et de vos fichiers récents.
           </Text>
 
-          {/* mini row actions (version mobile) */}
-          <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, marginTop: 10 }}>
+          <View
+            style={{
+              flexDirection: "row",
+              flexWrap: "wrap",
+              alignItems: "center",
+              gap: 8,
+              marginTop: 10,
+            }}
+          >
             {user?.email ? <Pill text={user.email} /> : null}
-            <Pill text="Rechercher" />
-            <Pill text="Upload" />
+            <Pill text="Quota : 30 Go" />
           </View>
         </View>
 
-        {/* HERO (Espace utilisé + répartition + actions) */}
+        {error ? (
+          <Panel style={{ padding: 14 }}>
+            <Text style={{ color: theme.colors.danger, fontWeight: "800" }}>
+              {error}
+            </Text>
+          </Panel>
+        ) : null}
+
         <Panel style={{ padding: 16, gap: 14 }}>
           <Text style={{ color: "rgba(255,255,255,0.65)", fontWeight: "700" }}>
             Espace utilisé
           </Text>
 
-          <Text style={{ color: theme.colors.text, fontSize: 46, fontWeight: "900" }}>
-            {formatGb(usage.used)} <Text style={{ color: "rgba(255,255,255,0.65)", fontSize: 26 }}>/ {QUOTA_GB} Go</Text>
+          <Text style={{ color: theme.colors.text, fontSize: 42, fontWeight: "900" }}>
+            {formatGb(usage?.usedGb || 0)}{" "}
+            <Text style={{ color: "rgba(255,255,255,0.65)", fontSize: 24 }}>
+              / {formatGb(usage?.quotaGb || 30)}
+            </Text>
           </Text>
 
-          {/* progress bar */}
           <View
             style={{
               height: 12,
@@ -161,7 +300,7 @@ export default function DashboardScreen() {
             <View
               style={{
                 height: "100%",
-                width: `${usedPct}%`,
+                width: `${usage?.usedPercent || 0}%`,
                 backgroundColor: "rgba(96,165,250,0.95)",
               }}
             />
@@ -169,22 +308,29 @@ export default function DashboardScreen() {
 
           <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
             <Text style={{ color: "rgba(255,255,255,0.55)", fontWeight: "700" }}>
-              Utilisé: {formatGb(usage.used)}
+              Utilisé : {formatGb(usage?.usedGb || 0)}
             </Text>
+
             <Text style={{ color: "rgba(255,255,255,0.55)", fontWeight: "700" }}>
-              Libre: {formatGb(QUOTA_GB - usage.used)}
+              Libre : {formatGb(usage?.freeGb || 0)}
             </Text>
           </View>
 
-          <Text style={{ color: "rgba(255,255,255,0.70)", fontWeight: "900", fontSize: 20, marginTop: 6 }}>
+          <Text
+            style={{
+              color: "rgba(255,255,255,0.70)",
+              fontWeight: "900",
+              fontSize: 20,
+              marginTop: 6,
+            }}
+          >
             Répartition
           </Text>
 
-          {/* breakdown grid */}
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
-            {usage.breakdown.map((b) => (
+            {breakdown.map((item) => (
               <View
-                key={b.label}
+                key={item.label}
                 style={{
                   width: "47%",
                   borderRadius: 18,
@@ -195,41 +341,41 @@ export default function DashboardScreen() {
                   gap: 6,
                 }}
               >
-                <Text style={{ color: "rgba(255,255,255,0.75)", fontWeight: "800", fontSize: 18 }}>
-                  {b.label}
+                <Text
+                  style={{
+                    color: "rgba(255,255,255,0.75)",
+                    fontWeight: "800",
+                    fontSize: 16,
+                  }}
+                >
+                  {item.label}
                 </Text>
-                <Text style={{ color: theme.colors.text, fontWeight: "900", fontSize: 26 }}>
-                  {formatGb(b.gb)}
+
+                <Text style={{ color: theme.colors.text, fontWeight: "900", fontSize: 24 }}>
+                  {formatBytes(item.bytes)}
                 </Text>
               </View>
             ))}
           </View>
 
-          {/* pills */}
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 4 }}>
-            <Pill text="Quota: 30 Go" />
-            <Pill text="Sync: Activée" />
-          </View>
-
-          {/* actions row */}
-          <View style={{ flexDirection: "row", gap: 10, marginTop: 2 }}>
+          <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
             <Pressable
+              onPress={() => navigation.navigate("Files")}
               style={{
                 flex: 1,
                 paddingVertical: 12,
                 borderRadius: 14,
                 alignItems: "center",
-                backgroundColor: "rgba(255,255,255,0.06)",
-                borderWidth: 1,
-                borderColor: "rgba(255,255,255,0.10)",
+                backgroundColor: "rgba(96,165,250,0.95)",
               }}
             >
-              <Text style={{ color: "rgba(255,255,255,0.85)", fontWeight: "800" }}>
-                Nouveau dossier
+              <Text style={{ color: "rgba(0,0,0,0.85)", fontWeight: "900" }}>
+                Mes fichiers
               </Text>
             </Pressable>
 
             <Pressable
+              onPress={() => navigation.navigate("Trash")}
               style={{
                 flex: 1,
                 paddingVertical: 12,
@@ -240,92 +386,97 @@ export default function DashboardScreen() {
                 borderColor: "rgba(255,255,255,0.10)",
               }}
             >
-              <Text style={{ color: "rgba(255,255,255,0.85)", fontWeight: "800" }}>
-                Partager
+              <Text style={{ color: theme.colors.text, fontWeight: "800" }}>
+                Corbeille
               </Text>
             </Pressable>
           </View>
         </Panel>
 
-        {/* Right metrics (en mobile: empilé) */}
-        <StatCard title="Stockage libre" value={formatGb(QUOTA_GB - usage.used)} pill="Sur 30 Go" />
-        <StatCard title="Fichiers récents" value="5" pill="Dernières modifications" />
-        <StatCard title="Liens de partage actifs" value="3" />
-        <StatCard title="Corbeille" value="0 élément" />
+        <StatCard
+          title="Stockage libre"
+          value={formatGb(usage?.freeGb || 0)}
+          subtitle={`Sur ${formatGb(usage?.quotaGb || 30)}`}
+        />
 
-        {/* Derniers fichiers */}
+        <StatCard
+          title="Fichiers récents"
+          value={`${recentFiles.length}`}
+          subtitle="Dernières modifications"
+        />
+
+        <StatCard
+          title="Liens de partage actifs"
+          value={`${activeSharesCount}`}
+          subtitle="Liens publics et partages créés"
+        />
+
+        <StatCard
+          title="Corbeille"
+          value={`${trashCount}`}
+          subtitle={trashCount > 1 ? "éléments supprimés" : "élément supprimé"}
+        />
+
         <Panel style={{ padding: 16, gap: 12 }}>
           <SectionTitle
             title="Derniers fichiers"
             subtitle="Les 5 derniers fichiers modifiés ou uploadés."
-            rightAction={<Text style={{ color: "rgba(96,165,250,0.95)", fontWeight: "800" }}>Tout voir</Text>}
+            rightAction={
+              <Pressable onPress={() => navigation.navigate("Files")}>
+                <Text style={{ color: "rgba(96,165,250,0.95)", fontWeight: "800" }}>
+                  Tout voir
+                </Text>
+              </Pressable>
+            }
           />
 
-          <View style={{ gap: 10 }}>
-            {recentFiles.map((f) => (
-              <View
-                key={f.name}
-                style={{
-                  borderRadius: 16,
-                  borderWidth: 1,
-                  borderColor: "rgba(255,255,255,0.10)",
-                  backgroundColor: "rgba(255,255,255,0.06)",
-                  padding: 12,
-                  gap: 6,
-                }}
-              >
-                <Text style={{ color: theme.colors.text, fontWeight: "900" }} numberOfLines={1}>
-                  {f.name}
-                </Text>
+          {recentFiles.length === 0 ? (
+            <Text style={{ color: theme.colors.muted }}>
+              Aucun fichier récent pour le moment.
+            </Text>
+          ) : (
+            <View style={{ gap: 10 }}>
+              {recentFiles.map((file) => (
+                <View
+                  key={file.id}
+                  style={{
+                    borderRadius: 16,
+                    borderWidth: 1,
+                    borderColor: "rgba(255,255,255,0.10)",
+                    backgroundColor: "rgba(255,255,255,0.06)",
+                    padding: 12,
+                    gap: 6,
+                  }}
+                >
+                  <Text
+                    style={{ color: theme.colors.text, fontWeight: "900" }}
+                    numberOfLines={1}
+                  >
+                    {file.name}
+                  </Text>
 
-                <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 10 }}>
-                  <Text style={{ color: "rgba(255,255,255,0.65)", fontWeight: "700" }}>
-                    {f.type} • {f.size}
-                  </Text>
-                  <Text style={{ color: "rgba(255,255,255,0.55)", fontWeight: "700" }} numberOfLines={1}>
-                    {f.modified}
-                  </Text>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      justifyContent: "space-between",
+                      gap: 10,
+                    }}
+                  >
+                    <Text style={{ color: "rgba(255,255,255,0.65)", fontWeight: "700" }}>
+                      {getItemTypeLabel(file)} • {formatBytes(file.sizeBytes)}
+                    </Text>
+
+                    <Text
+                      style={{ color: "rgba(255,255,255,0.55)", fontWeight: "700" }}
+                      numberOfLines={1}
+                    >
+                      {formatDate(file.updatedAt)}
+                    </Text>
+                  </View>
                 </View>
-              </View>
-            ))}
-          </View>
-        </Panel>
-
-        {/* Partages */}
-        <Panel style={{ padding: 16, gap: 12 }}>
-          <SectionTitle
-            title="Partages"
-            subtitle="Liens publics et dossiers partagés récemment."
-            rightAction={<Text style={{ color: "rgba(255,255,255,0.70)", fontWeight: "900" }}>🔗</Text>}
-          />
-
-          <View style={{ gap: 10 }}>
-            {recentShares.map((s) => (
-              <View
-                key={`${s.item}-${s.target}`}
-                style={{
-                  borderRadius: 16,
-                  borderWidth: 1,
-                  borderColor: "rgba(255,255,255,0.10)",
-                  backgroundColor: "rgba(255,255,255,0.06)",
-                  padding: 12,
-                  gap: 6,
-                }}
-              >
-                <Text style={{ color: theme.colors.text, fontWeight: "900" }} numberOfLines={1}>
-                  {s.item}
-                </Text>
-                <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 10 }}>
-                  <Text style={{ color: "rgba(255,255,255,0.60)", fontWeight: "700" }} numberOfLines={1}>
-                    {s.target}
-                  </Text>
-                  <Text style={{ color: "rgba(255,255,255,0.55)", fontWeight: "700" }} numberOfLines={1}>
-                    {s.expires}
-                  </Text>
-                </View>
-              </View>
-            ))}
-          </View>
+              ))}
+            </View>
+          )}
         </Panel>
       </ScrollView>
     </Screen>
