@@ -40,6 +40,22 @@ import {
   uploadFile,
 } from "../services/files";
 
+type TypeFilter = "all" | "file" | "folder";
+
+type CategoryFilter =
+  | "all"
+  | "image"
+  | "video"
+  | "audio"
+  | "document"
+  | "other";
+
+type DateFilter =
+  | "all"
+  | "today"
+  | "week"
+  | "month";
+
 function formatSize(bytes: number) {
   if (!bytes) return "—";
   if (bytes < 1024) return `${bytes} B`;
@@ -131,6 +147,78 @@ function validateSharePassword(password: string) {
 
   return null;
 }
+
+function getCategory(item: FileItem): CategoryFilter {
+  if (item.type === "folder") return "other";
+
+  const mime = item.mimeType || "";
+  const name = item.originalName.toLowerCase();
+
+  if (mime.startsWith("image/")) return "image";
+  if (mime.startsWith("video/")) return "video";
+  if (mime.startsWith("audio/")) return "audio";
+
+  if (
+    mime === "application/pdf" ||
+    mime.startsWith("text/") ||
+    mime.includes("word") ||
+    mime.includes("document") ||
+    mime.includes("sheet") ||
+    mime.includes("presentation") ||
+    name.endsWith(".pdf") ||
+    name.endsWith(".txt") ||
+    name.endsWith(".md") ||
+    name.endsWith(".doc") ||
+    name.endsWith(".docx") ||
+    name.endsWith(".xls") ||
+    name.endsWith(".xlsx") ||
+    name.endsWith(".ppt") ||
+    name.endsWith(".pptx")
+  ) {
+    return "document";
+  }
+
+  return "other";
+}
+
+function getFileExtension(name: string) {
+  const parts = name.toLowerCase().split(".");
+  if (parts.length < 2) return "";
+  return parts[parts.length - 1];
+}
+
+function matchesDateFilter(item: FileItem, filter: DateFilter) {
+  if (filter === "all") return true;
+
+  const date = new Date(item.updatedAt || item.createdAt);
+
+  if (Number.isNaN(date.getTime())) return false;
+
+  const now = new Date();
+
+  if (filter === "today") {
+    return (
+      date.getFullYear() === now.getFullYear() &&
+      date.getMonth() === now.getMonth() &&
+      date.getDate() === now.getDate()
+    );
+  }
+
+  if (filter === "week") {
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(now.getDate() - 7);
+    return date >= sevenDaysAgo;
+  }
+
+  if (filter === "month") {
+    return (
+      date.getFullYear() === now.getFullYear() &&
+      date.getMonth() === now.getMonth()
+    );
+  }
+
+  return true;
+}
 export default function FilesScreen() {
   const [items, setItems] = useState<FileItem[]>([]);
   const [currentParentId, setCurrentParentId] = useState<string | null>(null);
@@ -172,30 +260,42 @@ export default function FilesScreen() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadingFileName, setUploadingFileName] = useState("");
 
-  const [searchTerm, setSearchTerm] = useState("");
-  const [filtersOpen, setFiltersOpen] = useState(false);
-  const [typeFilter, setTypeFilter] = useState<"all" | "file" | "folder">("all");
+ const [searchTerm, setSearchTerm] = useState("");
+ const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
+ const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
+ const [dateFilter, setDateFilter] = useState<DateFilter>("all");
+ const [filtersOpen, setFiltersOpen] = useState(false);
 
   const visibleItems = useMemo(() => {
-    const cleanSearch = searchTerm.trim().toLowerCase();
-
-    return [...items]
+    return items
       .filter((item) => {
-        if (typeFilter !== "all" && item.type !== typeFilter) return false;
+        const normalizedSearch = searchTerm.trim().toLowerCase();
+        const itemName = decodeName(item.originalName).toLowerCase();
+        const extension = getFileExtension(item.originalName);
 
-        if (!cleanSearch) return true;
+        const matchesSearch = normalizedSearch
+          ? itemName.includes(normalizedSearch) ||
+            extension.includes(normalizedSearch.replace(".", ""))
+          : true;
 
-        const name = decodeName(item.originalName).toLowerCase();
-        const mime = item.mimeType?.toLowerCase() || "";
+        const matchesType =
+          typeFilter === "all" ? true : item.type === typeFilter;
 
-        return name.includes(cleanSearch) || mime.includes(cleanSearch);
+        const matchesCategory =
+          categoryFilter === "all"
+            ? true
+            : item.type === "file" && getCategory(item) === categoryFilter;
+
+        const matchesDate = matchesDateFilter(item, dateFilter);
+
+        return matchesSearch && matchesType && matchesCategory && matchesDate;
       })
       .sort((a, b) => {
         if (a.type === "folder" && b.type !== "folder") return -1;
         if (a.type !== "folder" && b.type === "folder") return 1;
         return decodeName(a.originalName).localeCompare(decodeName(b.originalName));
       });
-  }, [items, searchTerm, typeFilter]);
+  }, [items, searchTerm, typeFilter, categoryFilter, dateFilter]);
 
   async function loadFolder(parentId?: string | null, isRefresh = false) {
     try {
@@ -724,37 +824,159 @@ export default function FilesScreen() {
 
             {filtersOpen ? (
               <Panel style={{ padding: 12 }}>
-                <Text style={{ color: theme.colors.text, fontWeight: "800", marginBottom: 10 }}>
+                <Text style={{ color: theme.colors.text, fontWeight: "900", marginBottom: 10 }}>
                   Type
                 </Text>
 
-                <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-                  {(["all", "file", "folder"] as const).map((type) => (
+                <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+                  {[
+                    { value: "all", label: "Tous" },
+                    { value: "file", label: "Fichiers" },
+                    { value: "folder", label: "Dossiers" },
+                  ].map((filter) => (
                     <Pressable
-                      key={type}
-                      onPress={() => setTypeFilter(type)}
+                      key={filter.value}
+                      onPress={() => setTypeFilter(filter.value as TypeFilter)}
                       style={{
                         paddingHorizontal: 12,
                         paddingVertical: 8,
                         borderRadius: 999,
                         backgroundColor:
-                          typeFilter === type ? "rgba(96,165,250,0.95)" : "rgba(255,255,255,0.06)",
+                          typeFilter === filter.value
+                            ? "rgba(96,165,250,0.95)"
+                            : "rgba(255,255,255,0.06)",
                         borderWidth: 1,
                         borderColor:
-                          typeFilter === type ? "rgba(96,165,250,0.95)" : "rgba(255,255,255,0.10)",
+                          typeFilter === filter.value
+                            ? "rgba(96,165,250,0.95)"
+                            : "rgba(255,255,255,0.10)",
                       }}
                     >
                       <Text
                         style={{
-                          color: typeFilter === type ? "rgba(0,0,0,0.85)" : theme.colors.text,
+                          color:
+                            typeFilter === filter.value
+                              ? "rgba(0,0,0,0.85)"
+                              : theme.colors.text,
                           fontWeight: "800",
                         }}
                       >
-                        {type === "all" ? "Tous" : type === "file" ? "Fichiers" : "Dossiers"}
+                        {filter.label}
                       </Text>
                     </Pressable>
                   ))}
                 </View>
+
+                <Text style={{ color: theme.colors.text, fontWeight: "900", marginBottom: 10 }}>
+                  Catégorie
+                </Text>
+
+                <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+                  {[
+                    { value: "all", label: "Toutes" },
+                    { value: "image", label: "Images" },
+                    { value: "video", label: "Vidéos" },
+                    { value: "audio", label: "Audio" },
+                    { value: "document", label: "Documents" },
+                    { value: "other", label: "Autres" },
+                  ].map((filter) => (
+                    <Pressable
+                      key={filter.value}
+                      onPress={() => setCategoryFilter(filter.value as CategoryFilter)}
+                      style={{
+                        paddingHorizontal: 12,
+                        paddingVertical: 8,
+                        borderRadius: 999,
+                        backgroundColor:
+                          categoryFilter === filter.value
+                            ? "rgba(34,197,94,0.85)"
+                            : "rgba(255,255,255,0.06)",
+                        borderWidth: 1,
+                        borderColor:
+                          categoryFilter === filter.value
+                            ? "rgba(34,197,94,0.85)"
+                            : "rgba(255,255,255,0.10)",
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color:
+                            categoryFilter === filter.value
+                              ? "rgba(0,0,0,0.85)"
+                              : theme.colors.text,
+                          fontWeight: "800",
+                        }}
+                      >
+                        {filter.label}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+
+                <Text style={{ color: theme.colors.text, fontWeight: "900", marginBottom: 10 }}>
+                  Date de modification
+                </Text>
+
+                <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+                  {[
+                    { value: "all", label: "Toutes" },
+                    { value: "today", label: "Aujourd’hui" },
+                    { value: "week", label: "7 derniers jours" },
+                    { value: "month", label: "Ce mois-ci" },
+                  ].map((filter) => (
+                    <Pressable
+                      key={filter.value}
+                      onPress={() => setDateFilter(filter.value as DateFilter)}
+                      style={{
+                        paddingHorizontal: 12,
+                        paddingVertical: 8,
+                        borderRadius: 999,
+                        backgroundColor:
+                          dateFilter === filter.value
+                            ? "rgba(168,85,247,0.85)"
+                            : "rgba(255,255,255,0.06)",
+                        borderWidth: 1,
+                        borderColor:
+                          dateFilter === filter.value
+                            ? "rgba(168,85,247,0.85)"
+                            : "rgba(255,255,255,0.10)",
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color:
+                            dateFilter === filter.value
+                              ? "rgba(0,0,0,0.85)"
+                              : theme.colors.text,
+                          fontWeight: "800",
+                        }}
+                      >
+                        {filter.label}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+
+                <Pressable
+                  onPress={() => {
+                    setSearchTerm("");
+                    setTypeFilter("all");
+                    setCategoryFilter("all");
+                    setDateFilter("all");
+                  }}
+                  style={{
+                    paddingVertical: 10,
+                    borderRadius: 12,
+                    alignItems: "center",
+                    backgroundColor: "rgba(255,255,255,0.06)",
+                    borderWidth: 1,
+                    borderColor: "rgba(255,255,255,0.10)",
+                  }}
+                >
+                  <Text style={{ color: theme.colors.text, fontWeight: "800" }}>
+                    Réinitialiser les filtres
+                  </Text>
+                </Pressable>
               </Panel>
             ) : null}
           </View>
@@ -900,7 +1122,9 @@ export default function FilesScreen() {
             ListEmptyComponent={
               <Panel style={{ padding: 16 }}>
                 <Text style={{ color: theme.colors.muted }}>
-                  Aucun fichier ou dossier ici.
+                  {searchTerm || typeFilter !== "all" || categoryFilter !== "all" || dateFilter !== "all"
+                    ? "Aucun résultat ne correspond à votre recherche."
+                    : "Aucun fichier ou dossier ici."}
                 </Text>
               </Panel>
             }
