@@ -29,8 +29,8 @@ function getFriendlyError(error: string) {
     return "Veuillez renseigner l’email et le mot de passe.";
   }
 
-  if (error === "NETWORK_ERROR" || error === "Network Error") {
-    return "Impossible de contacter le serveur. Vérifie l’adresse API et que le backend est lancé.";
+  if (error === "Network Error" || error === "NETWORK_ERROR") {
+    return "Impossible de contacter le serveur. Vérifie que le backend est lancé et que EXPO_PUBLIC_API_URL est correcte.";
   }
 
   return error || "Erreur de connexion.";

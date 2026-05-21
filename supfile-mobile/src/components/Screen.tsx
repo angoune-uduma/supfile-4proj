@@ -1,6 +1,7 @@
 import React from "react";
 import { SafeAreaView, ViewStyle } from "react-native";
-import { theme } from "../theme/theme";
+import { useThemeMode } from "../theme/ThemeContext";
+import { buildTheme } from "../theme/theme";
 
 export default function Screen({
   children,
@@ -9,10 +10,17 @@ export default function Screen({
   children: React.ReactNode;
   style?: ViewStyle;
 }) {
+  const { mode } = useThemeMode();
+  const theme = buildTheme(mode);
+
   return (
     <SafeAreaView
       style={[
-        { flex: 1, backgroundColor: theme.colors.bg, padding: theme.spacing },
+        {
+          flex: 1,
+          backgroundColor: theme.colors.bg,
+          padding: theme.spacing,
+        },
         style,
       ]}
     >

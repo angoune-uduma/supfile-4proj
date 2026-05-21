@@ -1,6 +1,7 @@
 import React from "react";
 import { View, ViewStyle } from "react-native";
-import { theme } from "../theme/theme";
+import { useThemeMode } from "../theme/ThemeContext";
+import { buildTheme } from "../theme/theme";
 
 export default function Panel({
   children,
@@ -9,12 +10,15 @@ export default function Panel({
   children: React.ReactNode;
   style?: ViewStyle;
 }) {
+  const { mode } = useThemeMode();
+  const theme = buildTheme(mode);
+
   return (
     <View
       style={[
         {
           backgroundColor: theme.colors.card,
-          borderRadius: theme.radius,
+          borderRadius: theme.radius.md,
           padding: theme.spacing,
           borderWidth: 1,
           borderColor: theme.colors.border,
