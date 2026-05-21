@@ -2,10 +2,10 @@ const crypto = require("crypto");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const axios = require("axios");
+
 const User = require("../models/User");
 const RefreshToken = require("../models/RefreshToken");
 
-// Hash SHA256 pour stocker uniquement le hash en DB (plus sécurisé)
 function sha256(input) {
   return crypto.createHash("sha256").update(input).digest("hex");
 }
@@ -32,16 +32,7 @@ function signRefreshToken(user) {
   );
 }
 
-// -------------------- REGISTER --------------------
-exports.register = async (req, res) => {
-  const { email, password } = req.body;
-
-  const exists = await User.findOne({ email });
-  if (exists) return res.status(409).json({ error: "EMAIL_ALREADY_USED" });
-
-  const passwordHash = await bcrypt.hash(password, 10);
-  const user = await User.create({ email, passwordHash, provider: "local" });
-
+async function createAuthResponse(user) {
   const accessToken = signAccessToken(user);
   const refreshToken = signRefreshToken(user);
 
@@ -52,116 +43,186 @@ exports.register = async (req, res) => {
     revokedAt: null,
   });
 
-  return res.status(201).json({
-    user: { id: user._id, email: user.email, avatarUrl: user.avatarUrl || null },
+  return {
+    user: {
+      id: user._id,
+      email: user.email,
+      avatarUrl: user.avatarUrl || null,
+    },
     accessToken,
     refreshToken,
-  });
+  };
+}
+
+// -------------------- REGISTER --------------------
+exports.register = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ error: "EMAIL_AND_PASSWORD_REQUIRED" });
+    }
+
+    const cleanEmail = String(email).trim().toLowerCase();
+
+    const exists = await User.findOne({ email: cleanEmail });
+    if (exists) {
+      return res.status(409).json({ error: "EMAIL_ALREADY_USED" });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    const user = await User.create({
+      email: cleanEmail,
+      passwordHash,
+      provider: "local",
+    });
+
+    const authData = await createAuthResponse(user);
+
+    return res.status(201).json(authData);
+  } catch (err) {
+    return res.status(500).json({
+      error: "REGISTER_FAILED",
+      message: err.message,
+    });
+  }
 };
 
 // -------------------- LOGIN --------------------
 exports.login = async (req, res) => {
-  const { email, password } = req.body;
+  try {
+    const { email, password } = req.body;
 
-  const user = await User.findOne({ email });
-  if (!user || !user.passwordHash) {
-    return res.status(401).json({ error: "INVALID_CREDENTIALS" });
+    if (!email || !password) {
+      return res.status(400).json({ error: "EMAIL_AND_PASSWORD_REQUIRED" });
+    }
+
+    const cleanEmail = String(email).trim().toLowerCase();
+
+    const user = await User.findOne({ email: cleanEmail });
+
+    if (!user || !user.passwordHash) {
+      return res.status(401).json({ error: "INVALID_CREDENTIALS" });
+    }
+
+    const ok = await bcrypt.compare(password, user.passwordHash);
+
+    if (!ok) {
+      return res.status(401).json({ error: "INVALID_CREDENTIALS" });
+    }
+
+    const authData = await createAuthResponse(user);
+
+    return res.json(authData);
+  } catch (err) {
+    return res.status(500).json({
+      error: "LOGIN_FAILED",
+      message: err.message,
+    });
   }
-
-  const ok = await bcrypt.compare(password, user.passwordHash);
-  if (!ok) return res.status(401).json({ error: "INVALID_CREDENTIALS" });
-
-  const accessToken = signAccessToken(user);
-  const refreshToken = signRefreshToken(user);
-
-  await RefreshToken.create({
-    userId: user._id,
-    tokenHash: sha256(refreshToken),
-    expiresAt: addDays(30),
-    revokedAt: null,
-  });
-
-  return res.json({
-    user: { id: user._id, email: user.email, avatarUrl: user.avatarUrl || null },
-    accessToken,
-    refreshToken,
-  });
 };
 
 // -------------------- REFRESH --------------------
 exports.refresh = async (req, res) => {
-  const { refreshToken } = req.body;
-  if (!refreshToken) {
-    return res.status(400).json({ error: "MISSING_REFRESH_TOKEN" });
-  }
-
-  // 1) vérifier la signature JWT
-  let payload;
   try {
-    payload = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
-  } catch {
-    return res.status(401).json({ error: "INVALID_REFRESH_TOKEN" });
+    const { refreshToken } = req.body;
+
+    if (!refreshToken) {
+      return res.status(400).json({ error: "MISSING_REFRESH_TOKEN" });
+    }
+
+    let payload;
+
+    try {
+      payload = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+    } catch {
+      return res.status(401).json({ error: "INVALID_REFRESH_TOKEN" });
+    }
+
+    const tokenDoc = await RefreshToken.findOne({
+      tokenHash: sha256(refreshToken),
+      revokedAt: null,
+    });
+
+    if (!tokenDoc) {
+      return res.status(401).json({ error: "REFRESH_TOKEN_REVOKED" });
+    }
+
+    if (tokenDoc.expiresAt < new Date()) {
+      return res.status(401).json({ error: "REFRESH_TOKEN_EXPIRED" });
+    }
+
+    const user = await User.findById(payload.sub);
+
+    if (!user) {
+      return res.status(401).json({ error: "USER_NOT_FOUND" });
+    }
+
+    tokenDoc.revokedAt = new Date();
+    await tokenDoc.save();
+
+    const newAccessToken = signAccessToken(user);
+    const newRefreshToken = signRefreshToken(user);
+
+    await RefreshToken.create({
+      userId: user._id,
+      tokenHash: sha256(newRefreshToken),
+      expiresAt: addDays(30),
+      revokedAt: null,
+    });
+
+    return res.json({
+      accessToken: newAccessToken,
+      refreshToken: newRefreshToken,
+    });
+  } catch (err) {
+    return res.status(500).json({
+      error: "REFRESH_FAILED",
+      message: err.message,
+    });
   }
-
-  // 2) vérifier qu'il existe en DB et non révoqué
-  const tokenDoc = await RefreshToken.findOne({
-    tokenHash: sha256(refreshToken),
-    revokedAt: null,
-  });
-
-  if (!tokenDoc) return res.status(401).json({ error: "REFRESH_TOKEN_REVOKED" });
-  if (tokenDoc.expiresAt < new Date()) {
-    return res.status(401).json({ error: "REFRESH_TOKEN_EXPIRED" });
-  }
-
-  // 3) user
-  const user = await User.findById(payload.sub);
-  if (!user) return res.status(401).json({ error: "USER_NOT_FOUND" });
-
-  // 4) rotation: révoquer l'ancien refresh
-  tokenDoc.revokedAt = new Date();
-  await tokenDoc.save();
-
-  const newAccessToken = signAccessToken(user);
-  const newRefreshToken = signRefreshToken(user);
-
-  await RefreshToken.create({
-    userId: user._id,
-    tokenHash: sha256(newRefreshToken),
-    expiresAt: addDays(30),
-    revokedAt: null,
-  });
-
-  return res.json({
-    accessToken: newAccessToken,
-    refreshToken: newRefreshToken,
-  });
 };
 
 // -------------------- LOGOUT --------------------
 exports.logout = async (req, res) => {
-  const { refreshToken } = req.body;
-  if (!refreshToken) return res.json({ ok: true });
+  try {
+    const { refreshToken } = req.body;
 
-  await RefreshToken.updateOne(
-    { tokenHash: sha256(refreshToken), revokedAt: null },
-    { $set: { revokedAt: new Date() } }
-  );
+    if (!refreshToken) {
+      return res.json({ ok: true });
+    }
 
-  return res.json({ ok: true });
+    await RefreshToken.updateOne(
+      {
+        tokenHash: sha256(refreshToken),
+        revokedAt: null,
+      },
+      {
+        $set: { revokedAt: new Date() },
+      }
+    );
+
+    return res.json({ ok: true });
+  } catch (err) {
+    return res.status(500).json({
+      error: "LOGOUT_FAILED",
+      message: err.message,
+    });
+  }
 };
 
 // -------------------- GITHUB OAUTH START --------------------
 exports.githubStart = (req, res) => {
   const redirectUri = process.env.GITHUB_CALLBACK_URL;
-  const mobile = req.query.mobile === "1" ? "&state=mobile" : "";
+  const state = req.query.mobile === "1" ? "mobile" : "web";
 
   const url =
-    `https://github.com/login/oauth/authorize` +
+    "https://github.com/login/oauth/authorize" +
     `?client_id=${process.env.GITHUB_CLIENT_ID}` +
     `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-    `&scope=user:email` +
-    mobile;
+    "&scope=user:email" +
+    `&state=${state}`;
 
   return res.redirect(url);
 };
@@ -170,9 +231,11 @@ exports.githubStart = (req, res) => {
 exports.githubCallback = async (req, res) => {
   try {
     const { code, state } = req.query;
-    if (!code) return res.status(400).json({ error: "MISSING_CODE" });
 
-    // 1) échange code -> token github
+    if (!code) {
+      return res.status(400).json({ error: "MISSING_CODE" });
+    }
+
     const tokenResp = await axios.post(
       "https://github.com/login/oauth/access_token",
       {
@@ -181,13 +244,17 @@ exports.githubCallback = async (req, res) => {
         code,
         redirect_uri: process.env.GITHUB_CALLBACK_URL,
       },
-      { headers: { Accept: "application/json" } }
+      {
+        headers: { Accept: "application/json" },
+      }
     );
 
     const ghToken = tokenResp.data?.access_token;
-    if (!ghToken) return res.status(401).json({ error: "GITHUB_TOKEN_ERROR" });
 
-    // 2) récupère profil + emails
+    if (!ghToken) {
+      return res.status(401).json({ error: "GITHUB_TOKEN_ERROR" });
+    }
+
     const [meResp, emailsResp] = await Promise.all([
       axios.get("https://api.github.com/user", {
         headers: { Authorization: `Bearer ${ghToken}` },
@@ -202,10 +269,14 @@ exports.githubCallback = async (req, res) => {
     const primary = emails.find((e) => e.primary) || emails[0];
     const email = primary?.email;
 
-    if (!email) return res.status(400).json({ error: "NO_EMAIL_FROM_GITHUB" });
-    if (!githubId) return res.status(400).json({ error: "NO_GITHUB_ID" });
+    if (!email) {
+      return res.status(400).json({ error: "NO_EMAIL_FROM_GITHUB" });
+    }
 
-    // 3) find or create user
+    if (!githubId) {
+      return res.status(400).json({ error: "NO_GITHUB_ID" });
+    }
+
     let user = await User.findOne({ email });
 
     if (!user) {
@@ -216,45 +287,34 @@ exports.githubCallback = async (req, res) => {
         providerId: githubId,
       });
     } else {
-      // link github si compte existant
-      user.provider = user.provider || "local";
       user.providerId = user.providerId || githubId;
       await user.save();
     }
 
-    // 4) tokens (comme login/register)
-    const accessToken = signAccessToken(user);
-    const refreshToken = signRefreshToken(user);
+    const authData = await createAuthResponse(user);
 
-    await RefreshToken.create({
-      userId: user._id,
-      tokenHash: sha256(refreshToken),
-      expiresAt: addDays(30),
-      revokedAt: null,
-    });
-
-<<<<<<< Updated upstream
-    // 5) redirection vers frontend (avec tokens)
-    const redirectUrl =
-      `${process.env.FRONTEND_URL}/oauth/success` +
-      `?accessToken=${encodeURIComponent(accessToken)}` +
-      `&refreshToken=${encodeURIComponent(refreshToken)}`;
-=======
     const isMobile = state === "mobile";
+
     const redirectUrl = isMobile
-      ? `supfile://oauth/success?accessToken=${encodeURIComponent(accessToken)}&refreshToken=${encodeURIComponent(refreshToken)}`
-      : `${process.env.FRONTEND_URL}/oauth/success?accessToken=${encodeURIComponent(accessToken)}&refreshToken=${encodeURIComponent(refreshToken)}`;
->>>>>>> Stashed changes
+      ? `supfile://oauth/success?accessToken=${encodeURIComponent(
+          authData.accessToken
+        )}&refreshToken=${encodeURIComponent(authData.refreshToken)}`
+      : `${process.env.FRONTEND_URL}/oauth/success?accessToken=${encodeURIComponent(
+          authData.accessToken
+        )}&refreshToken=${encodeURIComponent(authData.refreshToken)}`;
 
     return res.redirect(redirectUrl);
   } catch (err) {
-    return res.status(500).json({ error: "OAUTH_FAILED", message: err.message });
+    return res.status(500).json({
+      error: "OAUTH_FAILED",
+      message: err.message,
+    });
   }
 };
 
 // -------------------- GOOGLE OAUTH START --------------------
 exports.googleStart = (req, res) => {
-  const mobile = req.query.mobile === "1" ? "mobile" : "web";
+  const state = req.query.mobile === "1" ? "mobile" : "web";
 
   const params = new URLSearchParams({
     client_id: process.env.GOOGLE_CLIENT_ID,
@@ -262,7 +322,7 @@ exports.googleStart = (req, res) => {
     response_type: "code",
     scope: "openid email profile",
     access_type: "offline",
-    state: mobile,
+    state,
   });
 
   return res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
@@ -272,9 +332,11 @@ exports.googleStart = (req, res) => {
 exports.googleCallback = async (req, res) => {
   try {
     const { code, state } = req.query;
-    if (!code) return res.status(400).json({ error: "MISSING_CODE" });
 
-    // 1) échange code -> token Google
+    if (!code) {
+      return res.status(400).json({ error: "MISSING_CODE" });
+    }
+
     const tokenResp = await axios.post("https://oauth2.googleapis.com/token", {
       code,
       client_id: process.env.GOOGLE_CLIENT_ID,
@@ -284,18 +346,26 @@ exports.googleCallback = async (req, res) => {
     });
 
     const { access_token } = tokenResp.data;
-    if (!access_token) return res.status(401).json({ error: "GOOGLE_TOKEN_ERROR" });
 
-    // 2) récupère le profil
-    const meResp = await axios.get("https://www.googleapis.com/oauth2/v2/userinfo", {
-      headers: { Authorization: `Bearer ${access_token}` },
-    });
+    if (!access_token) {
+      return res.status(401).json({ error: "GOOGLE_TOKEN_ERROR" });
+    }
+
+    const meResp = await axios.get(
+      "https://www.googleapis.com/oauth2/v2/userinfo",
+      {
+        headers: { Authorization: `Bearer ${access_token}` },
+      }
+    );
 
     const { id: googleId, email, picture } = meResp.data;
-    if (!email) return res.status(400).json({ error: "NO_EMAIL_FROM_GOOGLE" });
 
-    // 3) find or create user
+    if (!email) {
+      return res.status(400).json({ error: "NO_EMAIL_FROM_GOOGLE" });
+    }
+
     let user = await User.findOne({ email });
+
     if (!user) {
       user = await User.create({
         email,
@@ -306,55 +376,59 @@ exports.googleCallback = async (req, res) => {
       });
     } else {
       user.providerId = user.providerId || googleId;
+
+      if (!user.avatarUrl && picture) {
+        user.avatarUrl = picture;
+      }
+
       await user.save();
     }
 
-    // 4) tokens
-    const accessToken = signAccessToken(user);
-    const refreshToken = signRefreshToken(user);
+    const authData = await createAuthResponse(user);
 
-    await RefreshToken.create({
-      userId: user._id,
-      tokenHash: sha256(refreshToken),
-      expiresAt: addDays(30),
-      revokedAt: null,
-    });
-
-<<<<<<< Updated upstream
-    // 5) redirection vers frontend
-    const redirectUrl =
-      `${process.env.FRONTEND_URL}/oauth/success` +
-      `?accessToken=${encodeURIComponent(accessToken)}` +
-      `&refreshToken=${encodeURIComponent(refreshToken)}`;
-=======
     const isMobile = state === "mobile";
+
     const redirectUrl = isMobile
-      ? `supfile://oauth/success?accessToken=${encodeURIComponent(accessToken)}&refreshToken=${encodeURIComponent(refreshToken)}`
-      : `${process.env.FRONTEND_URL}/oauth/success?accessToken=${encodeURIComponent(accessToken)}&refreshToken=${encodeURIComponent(refreshToken)}`;
->>>>>>> Stashed changes
+      ? `supfile://oauth/success?accessToken=${encodeURIComponent(
+          authData.accessToken
+        )}&refreshToken=${encodeURIComponent(authData.refreshToken)}`
+      : `${process.env.FRONTEND_URL}/oauth/success?accessToken=${encodeURIComponent(
+          authData.accessToken
+        )}&refreshToken=${encodeURIComponent(authData.refreshToken)}`;
 
     return res.redirect(redirectUrl);
   } catch (err) {
-    return res.status(500).json({ error: "OAUTH_FAILED", message: err.message });
+    return res.status(500).json({
+      error: "OAUTH_FAILED",
+      message: err.message,
+    });
   }
-<<<<<<< Updated upstream
-=======
 };
 
 // -------------------- GOOGLE OAUTH MOBILE --------------------
 exports.googleMobile = async (req, res) => {
   try {
     const { accessToken: googleAccessToken } = req.body;
-    if (!googleAccessToken) return res.status(400).json({ error: "MISSING_TOKEN" });
 
-    const meResp = await axios.get("https://www.googleapis.com/oauth2/v2/userinfo", {
-      headers: { Authorization: `Bearer ${googleAccessToken}` },
-    });
+    if (!googleAccessToken) {
+      return res.status(400).json({ error: "MISSING_TOKEN" });
+    }
+
+    const meResp = await axios.get(
+      "https://www.googleapis.com/oauth2/v2/userinfo",
+      {
+        headers: { Authorization: `Bearer ${googleAccessToken}` },
+      }
+    );
 
     const { id: googleId, email, picture } = meResp.data;
-    if (!email) return res.status(400).json({ error: "NO_EMAIL_FROM_GOOGLE" });
+
+    if (!email) {
+      return res.status(400).json({ error: "NO_EMAIL_FROM_GOOGLE" });
+    }
 
     let user = await User.findOne({ email });
+
     if (!user) {
       user = await User.create({
         email,
@@ -365,22 +439,22 @@ exports.googleMobile = async (req, res) => {
       });
     } else {
       user.providerId = user.providerId || googleId;
+
+      if (!user.avatarUrl && picture) {
+        user.avatarUrl = picture;
+      }
+
       await user.save();
     }
 
-    const accessToken = signAccessToken(user);
-    const refreshToken = signRefreshToken(user);
+    const authData = await createAuthResponse(user);
 
-    await RefreshToken.create({
-      userId: user._id,
-      tokenHash: sha256(refreshToken),
-      expiresAt: addDays(30),
-      revokedAt: null,
-    });
-
-    return res.json({ accessToken, refreshToken });
+    return res.json(authData);
   } catch (err) {
-    return res.status(500).json({ error: "GOOGLE_MOBILE_AUTH_FAILED", message: err.message });
+    return res.status(500).json({
+      error: "GOOGLE_MOBILE_AUTH_FAILED",
+      message: err.message,
+    });
   }
 };
 
@@ -388,7 +462,10 @@ exports.googleMobile = async (req, res) => {
 exports.githubMobile = async (req, res) => {
   try {
     const { code, redirectUri } = req.body;
-    if (!code) return res.status(400).json({ error: "MISSING_CODE" });
+
+    if (!code) {
+      return res.status(400).json({ error: "MISSING_CODE" });
+    }
 
     const tokenResp = await axios.post(
       "https://github.com/login/oauth/access_token",
@@ -398,11 +475,16 @@ exports.githubMobile = async (req, res) => {
         code,
         redirect_uri: redirectUri,
       },
-      { headers: { Accept: "application/json" } }
+      {
+        headers: { Accept: "application/json" },
+      }
     );
 
     const ghToken = tokenResp.data?.access_token;
-    if (!ghToken) return res.status(401).json({ error: "GITHUB_TOKEN_ERROR" });
+
+    if (!ghToken) {
+      return res.status(401).json({ error: "GITHUB_TOKEN_ERROR" });
+    }
 
     const [meResp, emailsResp] = await Promise.all([
       axios.get("https://api.github.com/user", {
@@ -418,9 +500,12 @@ exports.githubMobile = async (req, res) => {
     const primary = emails.find((e) => e.primary) || emails[0];
     const email = primary?.email;
 
-    if (!email) return res.status(400).json({ error: "NO_EMAIL_FROM_GITHUB" });
+    if (!email) {
+      return res.status(400).json({ error: "NO_EMAIL_FROM_GITHUB" });
+    }
 
     let user = await User.findOne({ email });
+
     if (!user) {
       user = await User.create({
         email,
@@ -433,19 +518,13 @@ exports.githubMobile = async (req, res) => {
       await user.save();
     }
 
-    const accessToken = signAccessToken(user);
-    const refreshToken = signRefreshToken(user);
+    const authData = await createAuthResponse(user);
 
-    await RefreshToken.create({
-      userId: user._id,
-      tokenHash: sha256(refreshToken),
-      expiresAt: addDays(30),
-      revokedAt: null,
-    });
-
-    return res.json({ accessToken, refreshToken });
+    return res.json(authData);
   } catch (err) {
-    return res.status(500).json({ error: "GITHUB_MOBILE_AUTH_FAILED", message: err.message });
+    return res.status(500).json({
+      error: "GITHUB_MOBILE_AUTH_FAILED",
+      message: err.message,
+    });
   }
->>>>>>> Stashed changes
 };
