@@ -97,7 +97,6 @@ export default function FilesScreen() {
   const theme = buildTheme(mode);
   const c = theme.colors;
 
-  // Input styles reused throughout
   const inputStyle = {
     backgroundColor: c.surface,
     borderWidth: 1,
@@ -209,7 +208,12 @@ export default function FilesScreen() {
       const safeName = decodeName(item.originalName).replace(/[\\/:*?"<>|]+/g, "_");
       const fileName = item.type === "folder" ? `${safeName}.zip` : safeName || `download-${item.id}`;
       const url = item.type === "folder" ? getFolderDownloadUrl(item.id) : getDownloadUrl(item.id);
-      const result = await FileSystem.downloadAsync(url, `${FileSystem.cacheDirectory}${fileName}`, { headers: { Authorization: `Bearer ${token}` } });
+      const result = await FileSystem.downloadAsync(url, `${FileSystem.cacheDirectory}${fileName}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "ngrok-skip-browser-warning": "true",
+        }
+      });
       const canShare = await Sharing.isAvailableAsync();
       if (canShare) await Sharing.shareAsync(result.uri, { mimeType: item.type === "folder" ? "application/zip" : item.mimeType || "application/octet-stream", dialogTitle: decodeName(item.originalName) });
       else Alert.alert("Téléchargement terminé", `Fichier enregistré : ${result.uri}`);
@@ -681,11 +685,32 @@ export default function FilesScreen() {
                     <Text style={{ color: c.text, fontSize: 15, lineHeight: 22 }}>{previewTextContent}</Text>
                   </ScrollView>
                 ) : previewItem && previewToken && isVideoFile(previewItem) ? (
-                  <Video source={{ uri: getPreviewUrl(previewItem.id), headers: { Authorization: `Bearer ${previewToken}` } }} useNativeControls resizeMode={ResizeMode.CONTAIN} style={{ width: "100%", height: 300 }} />
+                  <Video
+                    source={{ uri: getPreviewUrl(previewItem.id), headers: { Authorization: `Bearer ${previewToken}`, "ngrok-skip-browser-warning": "true" } }}
+                    useNativeControls
+                    resizeMode={ResizeMode.CONTAIN}
+                    style={{ width: "100%", height: 300 }}
+                  />
                 ) : previewItem && previewToken && isAudioFile(previewItem) ? (
-                  <Video source={{ uri: getPreviewUrl(previewItem.id), headers: { Authorization: `Bearer ${previewToken}` } }} useNativeControls style={{ width: "100%", height: 100 }} />
+                  <Video
+                    source={{ uri: getPreviewUrl(previewItem.id), headers: { Authorization: `Bearer ${previewToken}`, "ngrok-skip-browser-warning": "true" } }}
+                    useNativeControls
+                    style={{ width: "100%", height: 100 }}
+                  />
                 ) : previewItem && previewToken ? (
-                  <WebView source={{ uri: getPreviewUrl(previewItem.id), headers: { Authorization: `Bearer ${previewToken}` } }} style={{ flex: 1, backgroundColor: "transparent" }} allowsInlineMediaPlayback mediaPlaybackRequiresUserAction={false} startInLoadingState />
+                  <WebView
+                    source={{
+                      uri: getPreviewUrl(previewItem.id),
+                      headers: {
+                        Authorization: `Bearer ${previewToken}`,
+                        "ngrok-skip-browser-warning": "true",
+                      }
+                    }}
+                    style={{ flex: 1, backgroundColor: "transparent" }}
+                    allowsInlineMediaPlayback
+                    mediaPlaybackRequiresUserAction={false}
+                    startInLoadingState
+                  />
                 ) : (
                   <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
                     <Text style={{ color: c.textSecondary }}>Impossible d'afficher ce fichier.</Text>
