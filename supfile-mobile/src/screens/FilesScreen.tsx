@@ -339,8 +339,14 @@ export default function FilesScreen() {
 
   async function handleShareGeneratedLink() {
     if (!shareLink) return;
-    try { await Share.share({ message: shareLink, url: shareLink }); }
-    catch { Alert.alert("Erreur", "Impossible de partager le lien."); }
+
+    try {
+      await Share.share({
+        message: shareLink,
+      });
+    } catch {
+      Alert.alert("Erreur", "Impossible de partager le lien.");
+    }
   }
 
   async function loadMoveFolders(parentId?: string | null) {

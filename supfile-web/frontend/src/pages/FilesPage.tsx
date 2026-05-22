@@ -1,5 +1,5 @@
 //FilesPage.tsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { MenuItem } from "@mui/material";
 import { moveItem } from "../services/files";
 import {
@@ -156,6 +156,8 @@ export default function FilesPage() {
   const [sharePassword, setSharePassword] = useState("");
   const [shareToEmail, setShareToEmail] = useState("");
   const [shareError, setShareError] = useState("");
+  const [shareSuccess, setShareSuccess] = useState("");
+  const shareLinkInputRef = useRef<HTMLInputElement | null>(null);
 
   // recherche / filtres
   const [searchTerm, setSearchTerm] = useState("");
@@ -448,6 +450,7 @@ async function uploadSingleFile(file: File) {
     setSharePassword("");
     setShareToEmail("");
     setShareError("");
+    setShareSuccess("");
     setShareOpen(true);
   }
 
@@ -466,11 +469,7 @@ async function uploadSingleFile(file: File) {
     setShareLink(url);
 
     if (url) {
-      try {
-        await navigator.clipboard.writeText(url);
-      } catch {
-        // ignore si la copie auto échoue
-      }
+      setShareSuccess("Lien généré. Clique sur Copier pour le mettre dans le presse-papiers.");
     }
   } catch (err: any) {
     setShareError(err?.message || "Création du lien public impossible.");
@@ -500,10 +499,41 @@ async function uploadSingleFile(file: File) {
 
   async function handleCopyShareLink() {
     if (!shareLink) return;
+
+    setShareError("");
+    setShareSuccess("");
+
     try {
       await navigator.clipboard.writeText(shareLink);
+      setShareSuccess("Lien copié dans le presse-papiers.");
+      return;
     } catch {
-      setShareError("Impossible de copier le lien.");
+      // Sur http://IP:5173, le navigateur peut bloquer clipboard.
+    }
+
+    try {
+      const input = shareLinkInputRef.current;
+
+      if (input) {
+        input.focus();
+        input.select();
+        input.setSelectionRange(0, shareLink.length);
+
+        const copied = document.execCommand("copy");
+
+        if (copied) {
+          setShareSuccess("Lien copié dans le presse-papiers.");
+          return;
+        }
+      }
+
+      setShareError(
+        "La copie automatique est bloquée par le navigateur. Le lien a été sélectionné : fais Ctrl+C pour le copier."
+      );
+    } catch {
+      setShareError(
+        "La copie automatique est bloquée par le navigateur. Sélectionne le lien puis fais Ctrl+C."
+      );
     }
   }
 
@@ -1150,7 +1180,10 @@ async function uploadSingleFile(file: File) {
                     fullWidth
                     label="Lien public"
                     value={shareLink}
+                    inputRef={shareLinkInputRef}
+                    onFocus={(e) => e.target.select()}
                     InputProps={{ readOnly: true }}
+                    helperText="Si le bouton Copier ne fonctionne pas, clique dans le champ puis fais Ctrl+C."
                   />
                 )}
               </Stack>
@@ -1179,6 +1212,7 @@ async function uploadSingleFile(file: File) {
             </Box>
 
             {shareError && <Alert severity="error">{shareError}</Alert>}
+            {shareSuccess && <Alert severity="success">{shareSuccess}</Alert>}
           </Stack>
         </DialogContent>
         <DialogActions>
