@@ -22,3 +22,22 @@ export async function register(email: string, password: string) {
 export async function logout() {
   await clearTokens();
 }
+
+export async function changePassword(oldPassword: string, newPassword: string) {
+  const res = await api.patch("/user/me/password", { oldPassword, newPassword });
+  return res.data;
+}
+
+export async function uploadAvatar(uri: string, mimeType: string, filename: string) {
+  const formData = new FormData();
+  formData.append("avatar", {
+    uri,
+    type: mimeType,
+    name: filename,
+  } as any);
+
+  const res = await api.patch("/user/me/avatar", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return res.data;
+}

@@ -23,7 +23,7 @@ type Me = {
   email: string;
   avatarUrl?: string | null;
   avatarMeta?: unknown;
-   provider?: "local" | "google" | "github";
+  provider?: "local" | "google" | "github";
 };
 
 export default function ProfilePage() {
@@ -47,7 +47,6 @@ export default function ProfilePage() {
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [passwordOk, setPasswordOk] = useState<string | null>(null);
 
-  // Styles "glass" cohérents dark/light
   const pageBg = useMemo(
     () => ({
       px: { xs: 0, md: 0 },
@@ -117,11 +116,11 @@ export default function ProfilePage() {
     }
 
     const next: Me = {
-        id: data?.id || data?._id,
+      id: data?.id || data?._id,
       email: data?.email,
       avatarUrl: data?.avatarUrl ?? null,
       avatarMeta: data?.avatarMeta,
-        provider: data?.provider,
+      provider: data?.provider,
     };
 
     setMe(next);
@@ -133,6 +132,31 @@ export default function ProfilePage() {
     loadMe();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function onAvatarUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append("avatar", file);
+
+    const token = localStorage.getItem("accessToken");
+    const res = await fetch("http://localhost:4000/user/me/avatar", {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
+
+    const data = await res.json();
+    if (res.ok) {
+      setAvatarUrl(data.avatarUrl);
+      setProfileOk("Avatar mis à jour ✅");
+      await loadMe();
+      window.dispatchEvent(new Event("profile-updated"));
+    } else {
+      setProfileError(data?.error || "Erreur upload avatar.");
+    }
+  }
 
   async function onSave() {
     setProfileError(null);
@@ -197,10 +221,7 @@ export default function ProfilePage() {
     try {
       const { res, data } = await apiFetch("/user/me/password", {
         method: "PATCH",
-        body: JSON.stringify({
-          oldPassword,
-          newPassword,
-        }),
+        body: JSON.stringify({ oldPassword, newPassword }),
       });
 
       if (!res.ok) {
@@ -209,17 +230,14 @@ export default function ProfilePage() {
           nav("/login", { replace: true });
           return;
         }
-
         if (data?.error === "INVALID_OLD_PASSWORD") {
           setPasswordError("L'ancien mot de passe est incorrect.");
           return;
         }
-
         if (data?.error === "OAUTH_ACCOUNT_NO_PASSWORD") {
           setPasswordError("Ce compte ne possède pas de mot de passe local.");
           return;
         }
-
         setPasswordError(data?.error || "Erreur mise à jour mot de passe.");
         return;
       }
@@ -240,10 +258,7 @@ export default function ProfilePage() {
     <Box sx={pageBg}>
       <Stack spacing={2}>
         <Box>
-          <Typography
-            variant="h5"
-            sx={{ fontWeight: 900, letterSpacing: "0.01em" }}
-          >
+          <Typography variant="h5" sx={{ fontWeight: 900, letterSpacing: "0.01em" }}>
             Mon profil
           </Typography>
           <Typography color="text.secondary" sx={{ mt: 0.4 }}>
@@ -281,7 +296,7 @@ export default function ProfilePage() {
                 {(displayedEmail?.[0] || "U").toUpperCase()}
               </Avatar>
 
-              <Tooltip title="Changer l’avatar (URL)" placement="right" arrow>
+              <Tooltip title="Changer l'avatar" placement="right" arrow>
                 <IconButton
                   size="small"
                   sx={(theme) => ({
@@ -304,10 +319,7 @@ export default function ProfilePage() {
                           : "rgba(255,255,255,0.95)",
                     },
                   })}
-                  onClick={() => {
-                    const el = document.getElementById("avatarUrlInput");
-                    el?.focus();
-                  }}
+                  onClick={() => document.getElementById("avatarFileInput")?.click()}
                 >
                   <PhotoCameraRoundedIcon fontSize="small" />
                 </IconButton>
@@ -315,9 +327,7 @@ export default function ProfilePage() {
             </Box>
 
             <Box sx={{ minWidth: 0 }}>
-              <Typography
-                sx={{ fontWeight: 900, fontSize: 22, lineHeight: 1.2 }}
-              >
+              <Typography sx={{ fontWeight: 900, fontSize: 22, lineHeight: 1.2 }}>
                 {displayedEmail}
               </Typography>
               <Typography color="text.secondary" sx={{ mt: 0.3 }}>
@@ -340,22 +350,34 @@ export default function ProfilePage() {
               disabled={me?.provider !== "local"}
               helperText={
                 me?.provider !== "local"
-                  ? `L’adresse email est gérée par ${me?.provider}.`
+                  ? `L'adresse email est gérée par ${me?.provider}.`
                   : undefined
               }
             />
 
-            <TextField
-              id="avatarUrlInput"
-              label="Avatar URL (optionnel)"
-              value={avatarUrl}
-              onChange={(e) => setAvatarUrl(e.target.value)}
-              fullWidth
-              size="small"
-              sx={inputSx}
-              placeholder="https://... (image)"
-              autoComplete="off"
+            {/* Upload avatar */}
+            <input
+              id="avatarFileInput"
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              style={{ display: "none" }}
+              onChange={onAvatarUpload}
             />
+            <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+              <Button
+                variant="outlined"
+                sx={pillBtnSx}
+                onClick={() => document.getElementById("avatarFileInput")?.click()}
+                startIcon={<PhotoCameraRoundedIcon />}
+              >
+                Choisir un avatar
+              </Button>
+              {avatarUrl && (
+                <Typography variant="caption" color="success.main">
+                  Image chargée ✅
+                </Typography>
+              )}
+            </Box>
 
             <Stack direction="row" spacing={1} justifyContent="flex-end">
               <Button variant="outlined" sx={pillBtnSx} onClick={() => nav(-1)}>
@@ -383,18 +405,15 @@ export default function ProfilePage() {
 
           <Stack spacing={1.6}>
             {me?.provider !== "local" ? (
-              // 👉 CAS OAuth (Google / GitHub)
               <>
                 <Typography sx={{ fontWeight: 900, fontSize: 18 }}>
                   Sécurité
                 </Typography>
-
                 <Typography color="text.secondary">
                   Ton compte est connecté via {me?.provider}. Le mot de passe est géré par ce service.
                 </Typography>
               </>
             ) : (
-              // 👉 CAS Local (email/password)
               <>
                 <Typography sx={{ fontWeight: 900, fontSize: 18 }}>
                   Sécurité
@@ -405,7 +424,6 @@ export default function ProfilePage() {
                     {passwordError}
                   </Typography>
                 )}
-
                 {passwordOk && (
                   <Typography sx={{ color: "success.main", fontWeight: 700 }}>
                     {passwordOk}
