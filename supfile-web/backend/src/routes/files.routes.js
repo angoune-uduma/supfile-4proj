@@ -6,6 +6,7 @@ const files = require("../controllers/files.controller");
 
 router.get("/", auth, files.list);
 router.get("/trash", auth, files.trash);
+router.get("/search", auth, files.search);
 
 router.post("/folders", auth, files.createFolder);
 router.get("/breadcrumbs/:id", auth, files.breadcrumbs);

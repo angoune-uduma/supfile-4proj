@@ -2,7 +2,11 @@
 import { apiFetch, getAccessToken } from "./api";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
-
+export async function searchFiles(q: string) {
+  return apiFetch(`/files/search?q=${encodeURIComponent(q)}`, {
+    method: "GET",
+  });
+}
 export async function listFiles(parentId?: string | null) {
   const query = parentId ? `?parentId=${encodeURIComponent(parentId)}` : "";
   return apiFetch(`/files${query}`, { method: "GET" });

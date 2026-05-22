@@ -915,3 +915,51 @@ exports.emptyTrash = async (req, res) => {
   }
 };
 
+exports.search = async (req, res) => {
+  try {
+    if (!req.user?._id) {
+      return res.status(401).json({ error: "UNAUTHORIZED" });
+    }
+
+    const q = (req.query.q || "").trim();
+
+    if (!q) {
+      return res.json({
+        ok: true,
+        items: [],
+      });
+    }
+
+    const items = await FileItem.find({
+      ownerId: req.user._id,
+      deletedAt: null,
+      originalName: {
+        $regex: q,
+        $options: "i",
+      },
+    })
+      .sort({ updatedAt: -1 })
+      .select(
+        "_id type originalName mimeType size parentId createdAt updatedAt"
+      );
+
+    return res.json({
+      ok: true,
+      items: items.map((d) => ({
+        id: d._id,
+        type: d.type,
+        originalName: d.originalName,
+        mimeType: d.mimeType,
+        size: d.size,
+        parentId: d.parentId,
+        createdAt: d.createdAt,
+        updatedAt: d.updatedAt,
+      })),
+    });
+  } catch (err) {
+    return res.status(500).json({
+      error: "SEARCH_FAILED",
+      message: err.message,
+    });
+  }
+};

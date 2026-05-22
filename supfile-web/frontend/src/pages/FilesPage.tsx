@@ -52,6 +52,7 @@ import {
   renameItem,
   softDeleteItem,
   uploadFile,
+  searchFiles,
 } from "../services/files";
 
 import {
@@ -80,6 +81,7 @@ type Crumb = {
 
 type TypeFilter = "all" | "file" | "folder";
 type MimeFilter = "all" | "image" | "video" | "audio" | "document" | "other";
+
 
 function formatSize(bytes: number) {
   if (!bytes) return "—";
@@ -159,17 +161,17 @@ export default function FilesPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [mimeFilter, setMimeFilter] = useState<MimeFilter>("all");
+  const [searchResults, setSearchResults] = useState<FileItem[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
 
   const [draggedItem, setDraggedItem] = useState<FileItem | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [previewText, setPreviewText] = useState<string>("");
 
   const filteredItems = useMemo(() => {
-    return items.filter((item) => {
-      const matchesName = item.originalName
-        .toLowerCase()
-        .includes(searchTerm.trim().toLowerCase());
+    const baseItems = searchTerm.trim() ? searchResults : items;
 
+    return baseItems.filter((item) => {
       const matchesType =
         typeFilter === "all" ? true : item.type === typeFilter;
 
@@ -179,9 +181,9 @@ export default function FilesPage() {
           ? true
           : item.type === "file" && itemMimeGroup === mimeFilter;
 
-      return matchesName && matchesType && matchesMime;
+      return matchesType && matchesMime;
     });
-  }, [items, searchTerm, typeFilter, mimeFilter]);
+  }, [items, searchResults, searchTerm, typeFilter, mimeFilter]);
 
   const sortedItems = useMemo(() => {
     return [...filteredItems].sort((a, b) => {
@@ -224,6 +226,39 @@ export default function FilesPage() {
   useEffect(() => {
     loadFolder(null);
   }, []);
+  useEffect(() => {
+    const q = searchTerm.trim();
+
+    if (!q) {
+      setSearchResults([]);
+      setSearchLoading(false);
+      return;
+    }
+
+    const timeout = setTimeout(async () => {
+      try {
+        setSearchLoading(true);
+        setError(null);
+
+        const { res, data } = await searchFiles(q);
+
+        if (!res.ok) {
+          setError(data?.error || "Recherche impossible.");
+          setSearchResults([]);
+          return;
+        }
+
+        setSearchResults(data.items || []);
+      } catch (err: any) {
+        setError(err?.message || "Recherche impossible.");
+        setSearchResults([]);
+      } finally {
+        setSearchLoading(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timeout);
+  }, [searchTerm]);
 
   async function handleCreateFolder() {
     if (!folderName.trim()) return;
@@ -722,8 +757,10 @@ async function uploadSingleFile(file: File) {
             )}
           </Stack>
 
-          {loading ? (
-            <Typography color="text.secondary">Chargement...</Typography>
+          {loading || searchLoading ? (
+            <Typography color="text.secondary">
+              {searchLoading ? "Recherche en cours..." : "Chargement..."}
+            </Typography>
           ) : sortedItems.length === 0 ? (
             <Typography color="text.secondary">
               Aucun fichier ou dossier trouvé.

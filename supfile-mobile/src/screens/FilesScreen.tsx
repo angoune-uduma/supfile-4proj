@@ -16,9 +16,8 @@ import { buildTheme } from "../theme/theme";
 import { createPublicShare, createInternalShare } from "../services/shares";
 import { getAccessToken } from "../services/secureStore";
 import {
-  BreadcrumbItem, FileItem, createFolder, getBreadcrumbs,
-  getDownloadUrl, getFolderDownloadUrl, getPreviewText, getPreviewUrl,
-  listFiles, moveItem, renameItem, softDeleteItem, uploadFile,
+  BreadcrumbItem, FileItem, createFolder, getBreadcrumbs, getDownloadUrl, getFolderDownloadUrl, getPreviewText, getPreviewUrl,
+  listFiles, moveItem, renameItem, searchFiles, softDeleteItem, uploadFile,
 } from "../services/files";
 
 type TypeFilter = "all" | "file" | "folder";
@@ -160,21 +159,28 @@ export default function FilesScreen() {
   const [dateFilter, setDateFilter] = useState<DateFilter>("all");
   const [filtersOpen, setFiltersOpen] = useState(false);
 
+ const [searchResults, setSearchResults] = useState<FileItem[]>([]);
+ const [searchLoading, setSearchLoading] = useState(false);
+
   const visibleItems = useMemo(() => {
-    return items.filter((item) => {
-      const s = searchTerm.trim().toLowerCase();
-      const name = decodeName(item.originalName).toLowerCase();
-      const ext = getFileExtension(item.originalName);
-      return (s ? name.includes(s) || ext.includes(s.replace(".", "")) : true) &&
-        (typeFilter === "all" ? true : item.type === typeFilter) &&
-        (categoryFilter === "all" ? true : item.type === "file" && getCategory(item) === categoryFilter) &&
-        matchesDateFilter(item, dateFilter);
-    }).sort((a, b) => {
-      if (a.type === "folder" && b.type !== "folder") return -1;
-      if (a.type !== "folder" && b.type === "folder") return 1;
-      return decodeName(a.originalName).localeCompare(decodeName(b.originalName));
-    });
-  }, [items, searchTerm, typeFilter, categoryFilter, dateFilter]);
+    const baseItems = searchTerm.trim() ? searchResults : items;
+
+    return baseItems
+      .filter((item) => {
+        return (
+          (typeFilter === "all" ? true : item.type === typeFilter) &&
+          (categoryFilter === "all"
+            ? true
+            : item.type === "file" && getCategory(item) === categoryFilter) &&
+          matchesDateFilter(item, dateFilter)
+        );
+      })
+      .sort((a, b) => {
+        if (a.type === "folder" && b.type !== "folder") return -1;
+        if (a.type !== "folder" && b.type === "folder") return 1;
+        return decodeName(a.originalName).localeCompare(decodeName(b.originalName));
+      });
+  }, [items, searchResults, searchTerm, typeFilter, categoryFilter, dateFilter]);
 
   async function loadFolder(parentId?: string | null, isRefresh = false) {
     try {
@@ -192,6 +198,39 @@ export default function FilesScreen() {
 
   useEffect(() => { loadFolder(null); }, []);
   useFocusEffect(useCallback(() => { loadFolder(currentParentId); }, [currentParentId]));
+
+  useEffect(() => {
+    const q = searchTerm.trim();
+
+    if (!q) {
+      setSearchResults([]);
+      setSearchLoading(false);
+      return;
+    }
+
+    const timeout = setTimeout(async () => {
+      try {
+        setSearchLoading(true);
+        setError(null);
+
+        const data = await searchFiles(q, typeFilter);
+
+        setSearchResults(data.items || []);
+      } catch (e: any) {
+        setSearchResults([]);
+        setError(
+          e?.response?.data?.error ||
+            e?.response?.data?.message ||
+            e?.message ||
+            "Recherche impossible."
+        );
+      } finally {
+        setSearchLoading(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timeout);
+  }, [searchTerm, typeFilter]);
 
   const isTextFile = (item: FileItem) => item.mimeType?.startsWith("text/") || item.mimeType === "application/json";
   const isImageFile = (item: FileItem) => item.mimeType?.startsWith("image/") || false;
@@ -444,9 +483,12 @@ export default function FilesScreen() {
           ) : null}
         </View>
 
-        {loading ? (
+        {loading || searchLoading ? (
           <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
             <ActivityIndicator color={c.primary} />
+            <Text style={{ color: c.textSecondary, marginTop: 10 }}>
+              {searchLoading ? "Recherche en cours..." : "Chargement..."}
+            </Text>
           </View>
         ) : (
           <FlatList

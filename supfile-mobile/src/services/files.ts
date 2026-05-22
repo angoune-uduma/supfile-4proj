@@ -140,3 +140,20 @@ export async function emptyTrash() {
   const res = await api.delete("/files/trash/empty");
   return res.data;
 }
+
+export async function searchFiles(q: string, type: "all" | "file" | "folder" = "all") {
+  const params = new URLSearchParams();
+
+  params.set("q", q);
+
+  if (type !== "all") {
+    params.set("type", type);
+  }
+
+  const res = await api.get(`/files/search?${params.toString()}`);
+
+  return res.data as {
+    ok: boolean;
+    items: FileItem[];
+  };
+}
