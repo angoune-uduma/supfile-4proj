@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import {
   Text, TouchableOpacity, View, ScrollView,
-  TextInput, Alert, ActivityIndicator,
+  TextInput, Alert, ActivityIndicator, Image,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import Screen from "../components/Screen";
@@ -17,12 +17,9 @@ export default function ProfileScreen() {
   const theme = buildTheme(mode);
   const c = theme.colors;
 
-  // Changement de mot de passe
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [loadingPwd, setLoadingPwd] = useState(false);
-
-  // Avatar
   const [loadingAvatar, setLoadingAvatar] = useState(false);
 
   const getInitials = (email: string) => {
@@ -37,7 +34,7 @@ export default function ProfileScreen() {
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ["images"],
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.7,
@@ -107,20 +104,24 @@ export default function ProfileScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ padding: 16, paddingBottom: 120, gap: 16 }}
       >
-        {/* Header */}
         <Text style={{ color: c.text, fontSize: 32, fontWeight: "900" }}>Profil</Text>
         <Text style={{ color: c.textSecondary }}>Gérez vos informations personnelles.</Text>
 
-        {/* Avatar + infos */}
         <Panel style={{ padding: 20, alignItems: "center", gap: 12 }}>
           <TouchableOpacity onPress={onPickAvatar} disabled={loadingAvatar}>
             <View style={{
               width: 80, height: 80, borderRadius: 40,
               backgroundColor: c.primary,
               alignItems: "center", justifyContent: "center",
+              overflow: "hidden",
             }}>
               {loadingAvatar ? (
                 <ActivityIndicator color="#fff" />
+              ) : user?.avatarUrl ? (
+                <Image
+                  source={{ uri: user.avatarUrl }}
+                  style={{ width: 80, height: 80, borderRadius: 40 }}
+                />
               ) : (
                 <Text style={{ color: "#fff", fontSize: 28, fontWeight: "900" }}>
                   {getInitials(user?.email || "")}
@@ -162,19 +163,15 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </Panel>
 
-        {/* Informations */}
         <Panel style={{ padding: 16, gap: 16 }}>
           <Text style={{ color: c.text, fontSize: 18, fontWeight: "900" }}>Informations</Text>
-
           <View style={{ gap: 4 }}>
             <Text style={{ color: c.textSecondary, fontSize: 13, fontWeight: "700" }}>EMAIL</Text>
             <Text style={{ color: c.text, fontSize: 16, fontWeight: "600" }}>
               {user?.email || "-"}
             </Text>
           </View>
-
           <View style={{ height: 1, backgroundColor: c.border }} />
-
           <View style={{ gap: 4 }}>
             <Text style={{ color: c.textSecondary, fontSize: 13, fontWeight: "700" }}>COMPTE</Text>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
@@ -184,10 +181,8 @@ export default function ProfileScreen() {
           </View>
         </Panel>
 
-        {/* Changement de mot de passe */}
         <Panel style={{ padding: 16, gap: 12 }}>
           <Text style={{ color: c.text, fontSize: 18, fontWeight: "900" }}>Sécurité</Text>
-
           <View style={{ gap: 6 }}>
             <Text style={{ color: c.textSecondary, fontSize: 13, fontWeight: "700" }}>
               ANCIEN MOT DE PASSE
@@ -201,7 +196,6 @@ export default function ProfileScreen() {
               style={inputStyle}
             />
           </View>
-
           <View style={{ gap: 6 }}>
             <Text style={{ color: c.textSecondary, fontSize: 13, fontWeight: "700" }}>
               NOUVEAU MOT DE PASSE
@@ -215,7 +209,6 @@ export default function ProfileScreen() {
               style={inputStyle}
             />
           </View>
-
           <TouchableOpacity
             onPress={onChangePassword}
             disabled={loadingPwd}
@@ -233,7 +226,6 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </Panel>
 
-        {/* Quota */}
         <Panel style={{ padding: 16, gap: 12 }}>
           <Text style={{ color: c.text, fontSize: 18, fontWeight: "900" }}>Stockage</Text>
           <View style={{ gap: 8 }}>
@@ -256,7 +248,6 @@ export default function ProfileScreen() {
           </View>
         </Panel>
 
-        {/* Déconnexion */}
         <TouchableOpacity
           onPress={logout}
           style={{

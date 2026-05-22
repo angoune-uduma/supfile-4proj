@@ -2,6 +2,7 @@
   "dependencies": {
     "dotenv": "^17.3.1",
     "expo": "^56.0.3",
+    "expo-image-picker": "~56.0.12",
     "mongoose": "^9.3.3",
     "multer": "^2.1.1"
   }
