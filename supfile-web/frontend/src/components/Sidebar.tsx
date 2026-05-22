@@ -45,13 +45,11 @@ export default function Sidebar({ mode, toggleTheme }: SidebarProps) {
     null
   );
 
-  // menu profil
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const menuOpen = Boolean(anchorEl);
 
   const isActive = (path: string) => location.pathname === path;
 
-  // Fetch profil (email/avatar) pour afficher l'avatar
   useEffect(() => {
     async function loadMe() {
       const { res, data } = await apiFetch("/user/me", { method: "GET" });
@@ -60,22 +58,15 @@ export default function Sidebar({ mode, toggleTheme }: SidebarProps) {
 
     loadMe();
 
-    const handleProfileUpdated = () => {
-      loadMe();
-    };
-
+    const handleProfileUpdated = () => loadMe();
     window.addEventListener("profile-updated", handleProfileUpdated);
-
-    return () => {
-      window.removeEventListener("profile-updated", handleProfileUpdated);
-    };
+    return () => window.removeEventListener("profile-updated", handleProfileUpdated);
   }, []);
 
   const handleLogout = () => {
     clearTokens();
     navigate("/login", { replace: true });
   };
-
 
   return (
     <Box
@@ -90,7 +81,7 @@ export default function Sidebar({ mode, toggleTheme }: SidebarProps) {
         py: 2,
       }}
     >
-      {/* PROFILE / LOGO BUTTON */}
+      {/* LOGO / AVATAR */}
       <Box sx={{ mb: 3 }}>
         <Tooltip title={me?.email ? `Profil (${me.email})` : "Profil"} placement="right">
           <IconButton
@@ -102,27 +93,19 @@ export default function Sidebar({ mode, toggleTheme }: SidebarProps) {
               height: 54,
               background: "radial-gradient(circle at 30% 0, #38bdf8, #1d4ed8)",
               boxShadow: "0 0 18px rgba(59,130,246,0.55)",
-              "&:hover": {
-                boxShadow: "0 0 22px rgba(59,130,246,0.75)",
-              },
+              "&:hover": { boxShadow: "0 0 22px rgba(59,130,246,0.75)" },
             }}
           >
             <Avatar
               src={me?.avatarUrl || supfileLogo}
               alt="Profil"
-              sx={{
-                width: 48,
-                height: 48,
-                bgcolor: "rgba(2,6,23,0.25)",
-              }}
-              imgProps={{
-                style: { objectFit: "contain" },
-              }}
+              sx={{ width: 48, height: 48, bgcolor: "rgba(2,6,23,0.25)" }}
+              imgProps={{ style: { objectFit: "contain" } }}
             />
           </IconButton>
         </Tooltip>
 
-        {/* MENU PROFIL */}
+        {/* MENU — "Mon profil" uniquement, "Paramètres" retiré du menu */}
         <Menu
           anchorEl={anchorEl}
           open={menuOpen}
@@ -146,25 +129,13 @@ export default function Sidebar({ mode, toggleTheme }: SidebarProps) {
           <MenuItem
             onClick={() => {
               setAnchorEl(null);
-              navigate("/profile"); // ✅ tu peux remplacer par "/settings" si vous n’avez pas /profile
+              navigate("/settings");
             }}
           >
             <ListItemIcon>
               <PersonRoundedIcon fontSize="small" />
             </ListItemIcon>
             Mon profil
-          </MenuItem>
-
-          <MenuItem
-            onClick={() => {
-              setAnchorEl(null);
-              navigate("/settings");
-            }}
-          >
-            <ListItemIcon>
-              <SettingsRoundedIcon fontSize="small" />
-            </ListItemIcon>
-            Paramètres
           </MenuItem>
 
           <Divider />
@@ -188,7 +159,6 @@ export default function Sidebar({ mode, toggleTheme }: SidebarProps) {
       <Stack spacing={1.4} sx={{ flex: 1 }}>
         {navItems.map((item) => {
           const active = isActive(item.path);
-
           return (
             <Tooltip title={item.label} placement="right" key={item.label}>
               <IconButton
@@ -202,9 +172,7 @@ export default function Sidebar({ mode, toggleTheme }: SidebarProps) {
                   border: active
                     ? "1px solid rgba(59,130,246,0.6)"
                     : "1px solid transparent",
-                  boxShadow: active
-                    ? "0 0 0 1px rgba(37,99,235,0.3)"
-                    : "none",
+                  boxShadow: active ? "0 0 0 1px rgba(37,99,235,0.3)" : "none",
                   "&:hover": {
                     bgcolor: "rgba(148,163,184,0.12)",
                     borderColor: "rgba(148,163,184,0.35)",
@@ -260,7 +228,6 @@ export default function Sidebar({ mode, toggleTheme }: SidebarProps) {
           </IconButton>
         </Tooltip>
 
-        {/* Gardé : bouton logout bas (si tu veux le garder) */}
         <Tooltip title="Déconnexion" placement="right">
           <IconButton
             onClick={handleLogout}

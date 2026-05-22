@@ -39,7 +39,6 @@ export default function ProfilePage() {
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
 
-  const [loading, setLoading] = useState(false);
   const [loadingPwd, setLoadingPwd] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [profileOk, setProfileOk] = useState<string | null>(null);
@@ -137,6 +136,9 @@ export default function ProfilePage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Reset input so the same file can be re-selected if needed
+    e.target.value = "";
+
     const formData = new FormData();
     formData.append("avatar", file);
 
@@ -155,45 +157,6 @@ export default function ProfilePage() {
       window.dispatchEvent(new Event("profile-updated"));
     } else {
       setProfileError(data?.error || "Erreur upload avatar.");
-    }
-  }
-
-  async function onSave() {
-    setProfileError(null);
-    setProfileOk(null);
-    setLoading(true);
-
-    try {
-      const payload: { email?: string; avatarUrl?: string | null } = {};
-
-      if (me?.provider === "local" && email?.trim()) {
-        payload.email = email.trim();
-      }
-
-      payload.avatarUrl = avatarUrl?.trim() ? avatarUrl.trim() : null;
-
-      const { res, data } = await apiFetch("/user/me", {
-        method: "PATCH",
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        if (res.status === 401) {
-          clearTokens();
-          nav("/login", { replace: true });
-          return;
-        }
-        setProfileError(data?.error || "Erreur lors de la mise à jour du profil.");
-        return;
-      }
-
-      setProfileOk("Profil mis à jour ✅");
-      await loadMe();
-      window.dispatchEvent(new Event("profile-updated"));
-    } catch {
-      setProfileError("Erreur serveur.");
-    } finally {
-      setLoading(false);
     }
   }
 
@@ -355,7 +318,7 @@ export default function ProfilePage() {
               }
             />
 
-            {/* Upload avatar */}
+            {/* Upload avatar — déclenché automatiquement au choix du fichier */}
             <input
               id="avatarFileInput"
               type="file"
@@ -379,24 +342,10 @@ export default function ProfilePage() {
               )}
             </Box>
 
+            {/* Bouton Retour uniquement — l'avatar est sauvegardé automatiquement */}
             <Stack direction="row" spacing={1} justifyContent="flex-end">
               <Button variant="outlined" sx={pillBtnSx} onClick={() => nav(-1)}>
                 Retour
-              </Button>
-              <Button
-                variant="contained"
-                sx={(theme) => ({
-                  ...pillBtnSx(theme),
-                  background: "linear-gradient(135deg, #2563eb, #4f46e5)",
-                  boxShadow:
-                    theme.palette.mode === "dark"
-                      ? "0 12px 25px rgba(37,99,235,0.35)"
-                      : "0 12px 25px rgba(37,99,235,0.22)",
-                })}
-                onClick={onSave}
-                disabled={loading}
-              >
-                {loading ? "Enregistrement..." : "Enregistrer"}
               </Button>
             </Stack>
           </Stack>
