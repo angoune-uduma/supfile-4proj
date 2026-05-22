@@ -32,6 +32,11 @@
       "expo-secure-store",
       "expo-web-browser",
       "expo-sharing"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "1347cc8d-7490-45dd-9606-8c6da89872b2"
+      }
+    }
   }
 }

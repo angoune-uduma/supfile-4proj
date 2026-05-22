@@ -214,12 +214,12 @@ exports.logout = async (req, res) => {
 
 // -------------------- GITHUB OAUTH START --------------------
 exports.githubStart = (req, res) => {
-  const redirectUri = process.env.GITHUB_CALLBACK_URL;
+  const redirectUri = process.env.GITHUB_WEB_CALLBACK_URL;
   const state = req.query.mobile === "1" ? "mobile" : "web";
 
   const url =
     "https://github.com/login/oauth/authorize" +
-    `?client_id=${process.env.GITHUB_CLIENT_ID}` +
+    `?client_id=${process.env.GITHUB_WEB_CLIENT_ID}` +
     `&redirect_uri=${encodeURIComponent(redirectUri)}` +
     "&scope=user:email" +
     `&state=${state}`;
@@ -239,10 +239,10 @@ exports.githubCallback = async (req, res) => {
     const tokenResp = await axios.post(
       "https://github.com/login/oauth/access_token",
       {
-        client_id: process.env.GITHUB_CLIENT_ID,
-        client_secret: process.env.GITHUB_CLIENT_SECRET,
+        client_id: process.env.GITHUB_WEB_CLIENT_ID,
+        client_secret: process.env.GITHUB_WEB_CLIENT_SECRET,
         code,
-        redirect_uri: process.env.GITHUB_CALLBACK_URL,
+        redirect_uri: process.env.GITHUB_WEB_CALLBACK_URL,
       },
       {
         headers: { Accept: "application/json" },
@@ -470,8 +470,8 @@ exports.githubMobile = async (req, res) => {
     const tokenResp = await axios.post(
       "https://github.com/login/oauth/access_token",
       {
-        client_id: process.env.GITHUB_CLIENT_ID,
-        client_secret: process.env.GITHUB_CLIENT_SECRET,
+        client_id: process.env.GITHUB_MOBILE_CLIENT_ID,
+        client_secret: process.env.GITHUB_MOBILE_CLIENT_SECRET,
         code,
         redirect_uri: redirectUri,
       },
