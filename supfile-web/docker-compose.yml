@@ -18,13 +18,12 @@ services:
     volumes:
       - ./backend/src:/app/src
       - ./backend/utils:/app/utils
-      - C:/supfile_shared_storage:/app/storage
+      - ./storage:/app/storage
       - /app/node_modules
     depends_on:
       - mongodb
     restart: unless-stopped
     command: npm start
-
 
   frontend:
     build: ./frontend
