@@ -8,7 +8,7 @@ if (!API_URL) {
     "EXPO_PUBLIC_API_URL est manquante. Vérifie le fichier .env du projet mobile."
   );
 }
->>>>>>> Stashed changes
+
 
 export const api = axios.create({
   baseURL: API_URL,
