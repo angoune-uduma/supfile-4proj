@@ -8,27 +8,9 @@ import Screen from "../components/Screen";
 import Panel from "../components/Panel";
 import { useThemeMode } from "../theme/ThemeContext";
 import { buildTheme } from "../theme/theme";
+import { formatSize, getEmoji, decodeName } from "../utils/format";
 import { FileItem, emptyTrash, hardDeleteItem, listTrash, restoreItem } from "../services/files";
 
-function formatSize(bytes: number) {
-  if (!bytes) return "—";
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-}
-function getEmoji(item: FileItem) {
-  if (item.type === "folder") return "🗂️";
-  if (item.mimeType?.startsWith("image/")) return "🖼️";
-  if (item.mimeType?.startsWith("video/")) return "🎬";
-  if (item.mimeType?.startsWith("audio/")) return "🎵";
-  if (item.mimeType === "application/pdf") return "📄";
-  if (item.mimeType?.startsWith("text/")) return "📝";
-  return "📦";
-}
-function decodeName(name: string) {
-  try { return decodeURIComponent(name); } catch { return name; }
-}
 function getApiError(e: any, fallback: string) {
   return e?.response?.data?.error || e?.response?.data?.message || e?.message || fallback;
 }

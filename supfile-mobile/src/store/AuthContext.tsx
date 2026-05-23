@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { api } from "../services/api";
+import { api, setLogoutCallback } from "../services/api";
 import { login as loginApi, register as registerApi, logout as logoutApi } from "../services/auth";
 import { clearTokens, getAccessToken } from "../services/secureStore";
 
@@ -38,6 +38,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(res.data);
   }
 
+  // Enregistre le callback de déconnexion pour l'intercepteur 401
+  useEffect(() => {
+    setLogoutCallback(() => {
+      setUser(null);
+    });
+  }, []);
+
   useEffect(() => {
     (async () => {
       try {
@@ -53,17 +60,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   async function login(email: string, password: string) {
-    await loginApi(email, password); // stocke tokens via services/auth.ts
+    await loginApi(email, password);
     await refreshMe();
   }
 
   async function register(email: string, password: string) {
     await registerApi(email, password);
-    await login(email, password); // auto-login comme ton web
+    await login(email, password);
   }
 
   async function logout() {
-    await logoutApi(); // clear tokens
+    await logoutApi();
     setUser(null);
   }
 

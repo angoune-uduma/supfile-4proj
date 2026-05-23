@@ -11,14 +11,9 @@ import Panel from "../components/Panel";
 import { useThemeMode } from "../theme/ThemeContext";
 import { buildTheme } from "../theme/theme";
 import { getAccessToken } from "../services/secureStore";
+import { formatDateTime } from "../utils/format";
 import { getInternalShareFileUrl, getSharesWithMe, ShareWithMe } from "../services/shares";
 
-function formatDate(value?: string) {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString();
-}
 function safeName(name: string) {
   return name.replace(/[\\/:*?"<>|]+/g, "_");
 }
@@ -122,7 +117,7 @@ export default function SharedScreen() {
                         Par : {item.fromUser?.email || "—"}
                       </Text>
                       <Text style={{ color: c.textSecondary, marginTop: 4 }}>
-                        Date : {formatDate(item.createdAt)}
+                        Date : {formatDateTime(item.createdAt)}
                       </Text>
                     </View>
                   </View>

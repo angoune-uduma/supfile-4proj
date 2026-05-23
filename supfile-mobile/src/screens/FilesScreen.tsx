@@ -15,6 +15,7 @@ import { useThemeMode } from "../theme/ThemeContext";
 import { buildTheme } from "../theme/theme";
 import { createPublicShare, createInternalShare } from "../services/shares";
 import { getAccessToken } from "../services/secureStore";
+import { formatSize, getEmoji, decodeName } from "../utils/format";
 import {
   BreadcrumbItem, FileItem, createFolder, getBreadcrumbs, getDownloadUrl, getFolderDownloadUrl, getPreviewText, getPreviewUrl,
   listFiles, moveItem, renameItem, searchFiles, softDeleteItem, uploadFile,
@@ -24,25 +25,6 @@ type TypeFilter = "all" | "file" | "folder";
 type CategoryFilter = "all" | "image" | "video" | "audio" | "document" | "other";
 type DateFilter = "all" | "today" | "week" | "month";
 
-function formatSize(bytes: number) {
-  if (!bytes) return "—";
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-}
-function getEmoji(item: FileItem) {
-  if (item.type === "folder") return "📁";
-  if (item.mimeType?.startsWith("image/")) return "🖼️";
-  if (item.mimeType?.startsWith("video/")) return "🎬";
-  if (item.mimeType?.startsWith("audio/")) return "🎵";
-  if (item.mimeType === "application/pdf") return "📄";
-  if (item.mimeType?.startsWith("text/")) return "📝";
-  return "📦";
-}
-function decodeName(name: string) {
-  try { return decodeURIComponent(name); } catch { return name; }
-}
 function parseExpirationDate(value: string) {
   const match = value.trim().match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})$/);
   if (!match) return null;
@@ -75,10 +57,6 @@ function getCategory(item: FileItem): CategoryFilter {
     [".pdf",".txt",".md",".doc",".docx",".xls",".xlsx",".ppt",".pptx"].some(ext => name.endsWith(ext)))
     return "document";
   return "other";
-}
-function getFileExtension(name: string) {
-  const parts = name.toLowerCase().split(".");
-  return parts.length < 2 ? "" : parts[parts.length - 1];
 }
 function matchesDateFilter(item: FileItem, filter: DateFilter) {
   if (filter === "all") return true;
@@ -158,13 +136,11 @@ export default function FilesScreen() {
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
   const [dateFilter, setDateFilter] = useState<DateFilter>("all");
   const [filtersOpen, setFiltersOpen] = useState(false);
-
- const [searchResults, setSearchResults] = useState<FileItem[]>([]);
- const [searchLoading, setSearchLoading] = useState(false);
+  const [searchResults, setSearchResults] = useState<FileItem[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
 
   const visibleItems = useMemo(() => {
     const baseItems = searchTerm.trim() ? searchResults : items;
-
     return baseItems
       .filter((item) => {
         return (
@@ -201,34 +177,18 @@ export default function FilesScreen() {
 
   useEffect(() => {
     const q = searchTerm.trim();
-
-    if (!q) {
-      setSearchResults([]);
-      setSearchLoading(false);
-      return;
-    }
-
+    if (!q) { setSearchResults([]); setSearchLoading(false); return; }
     const timeout = setTimeout(async () => {
       try {
         setSearchLoading(true);
         setError(null);
-
         const data = await searchFiles(q, typeFilter);
-
         setSearchResults(data.items || []);
       } catch (e: any) {
         setSearchResults([]);
-        setError(
-          e?.response?.data?.error ||
-            e?.response?.data?.message ||
-            e?.message ||
-            "Recherche impossible."
-        );
-      } finally {
-        setSearchLoading(false);
-      }
+        setError(e?.response?.data?.error || e?.response?.data?.message || e?.message || "Recherche impossible.");
+      } finally { setSearchLoading(false); }
     }, 300);
-
     return () => clearTimeout(timeout);
   }, [searchTerm, typeFilter]);
 
@@ -248,10 +208,7 @@ export default function FilesScreen() {
       const fileName = item.type === "folder" ? `${safeName}.zip` : safeName || `download-${item.id}`;
       const url = item.type === "folder" ? getFolderDownloadUrl(item.id) : getDownloadUrl(item.id);
       const result = await FileSystem.downloadAsync(url, `${FileSystem.cacheDirectory}${fileName}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "ngrok-skip-browser-warning": "true",
-        }
+        headers: { Authorization: `Bearer ${token}`, "ngrok-skip-browser-warning": "true" }
       });
       const canShare = await Sharing.isAvailableAsync();
       if (canShare) await Sharing.shareAsync(result.uri, { mimeType: item.type === "folder" ? "application/zip" : item.mimeType || "application/octet-stream", dialogTitle: decodeName(item.originalName) });
@@ -339,14 +296,8 @@ export default function FilesScreen() {
 
   async function handleShareGeneratedLink() {
     if (!shareLink) return;
-
-    try {
-      await Share.share({
-        message: shareLink,
-      });
-    } catch {
-      Alert.alert("Erreur", "Impossible de partager le lien.");
-    }
+    try { await Share.share({ message: shareLink }); }
+    catch { Alert.alert("Erreur", "Impossible de partager le lien."); }
   }
 
   async function loadMoveFolders(parentId?: string | null) {
@@ -747,13 +698,7 @@ export default function FilesScreen() {
                   />
                 ) : previewItem && previewToken ? (
                   <WebView
-                    source={{
-                      uri: getPreviewUrl(previewItem.id),
-                      headers: {
-                        Authorization: `Bearer ${previewToken}`,
-                        "ngrok-skip-browser-warning": "true",
-                      }
-                    }}
+                    source={{ uri: getPreviewUrl(previewItem.id), headers: { Authorization: `Bearer ${previewToken}`, "ngrok-skip-browser-warning": "true" } }}
                     style={{ flex: 1, backgroundColor: "transparent" }}
                     allowsInlineMediaPlayback
                     mediaPlaybackRequiresUserAction={false}

@@ -14,6 +14,7 @@ import Panel from "../components/Panel";
 import { useThemeMode } from "../theme/ThemeContext";
 import { buildTheme } from "../theme/theme";
 import { useAuth } from "../store/AuthContext";
+import { formatSize, formatGb, formatDate } from "../utils/format";
 
 import {
   DashboardRecentFile,
@@ -23,25 +24,6 @@ import {
   fetchDashboardUsage,
   fetchTrashCount,
 } from "../services/dashboard";
-
-function formatGb(n: number) {
-  return `${n.toFixed(1)} Go`;
-}
-
-function formatBytes(bytes: number) {
-  if (!bytes) return "—";
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-}
-
-function formatDate(value?: string) {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
-}
 
 function getItemTypeLabel(item: DashboardRecentFile) {
   return item.type === "folder" ? "Dossier" : "Fichier";
@@ -235,7 +217,7 @@ export default function DashboardScreen() {
                 style={{ width: "47%", borderRadius: 18, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface, padding: 14, gap: 6 }}
               >
                 <Text style={{ color: c.textSecondary, fontWeight: "800", fontSize: 16 }}>{item.label}</Text>
-                <Text style={{ color: c.text, fontWeight: "900", fontSize: 24 }}>{formatBytes(item.bytes)}</Text>
+                <Text style={{ color: c.text, fontWeight: "900", fontSize: 24 }}>{formatSize(item.bytes)}</Text>
               </View>
             ))}
           </View>
@@ -284,7 +266,7 @@ export default function DashboardScreen() {
                 <View key={file.id} style={{ borderRadius: 16, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface, padding: 12, gap: 6 }}>
                   <Text style={{ color: c.text, fontWeight: "900" }} numberOfLines={1}>{file.name}</Text>
                   <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 10 }}>
-                    <Text style={{ color: c.textSecondary, fontWeight: "700" }}>{getItemTypeLabel(file)} • {formatBytes(file.sizeBytes)}</Text>
+                    <Text style={{ color: c.textSecondary, fontWeight: "700" }}>{getItemTypeLabel(file)} • {formatSize(file.sizeBytes)}</Text>
                     <Text style={{ color: c.textSecondary, fontWeight: "700" }} numberOfLines={1}>{formatDate(file.updatedAt)}</Text>
                   </View>
                 </View>
