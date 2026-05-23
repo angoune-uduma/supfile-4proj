@@ -1,7 +1,8 @@
 import React from "react";
-import { SafeAreaView, ViewStyle } from "react-native";
+import {  ViewStyle } from "react-native";
 import { useThemeMode } from "../theme/ThemeContext";
 import { buildTheme } from "../theme/theme";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function Screen({
   children,
