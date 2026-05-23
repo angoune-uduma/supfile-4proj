@@ -337,7 +337,7 @@ export default function ProfilePage() {
               </Button>
               {avatarUrl && (
                 <Typography variant="caption" color="success.main">
-                  Image chargée ✅
+
                 </Typography>
               )}
             </Box>

@@ -69,6 +69,40 @@ function matchesDateFilter(item: FileItem, filter: DateFilter) {
   return true;
 }
 
+function getUploadErrorMessage(e: any) {
+  const backendError =
+    e?.response?.data?.error ||
+    e?.response?.data?.message ||
+    e?.message;
+
+  if (backendError === "STORAGE_QUOTA_EXCEEDED") {
+    return "Quota de stockage dépassé. Supprime des fichiers ou vide la corbeille avant d’uploader.";
+  }
+
+  if (backendError === "FILE_TOO_LARGE") {
+    const maxMb = e?.response?.data?.maxMb || 50;
+    return `Fichier trop volumineux. Taille maximale autorisée : ${maxMb} Mo.`;
+  }
+
+  if (backendError === "MISSING_FILE") {
+    return "Aucun fichier sélectionné.";
+  }
+
+  if (backendError === "INVALID_PARENT_FOLDER") {
+    return "Le dossier de destination est invalide.";
+  }
+
+  if (backendError === "UNAUTHORIZED") {
+    return "Session expirée. Reconnecte-toi puis réessaie.";
+  }
+
+  if (backendError === "Network Error" || backendError === "NETWORK_ERROR") {
+    return "Impossible de contacter le serveur. Vérifie l’adresse API et ta connexion.";
+  }
+
+  return backendError || "Upload impossible.";
+}
+
 export default function FilesScreen() {
   const { mode } = useThemeMode();
   const theme = buildTheme(mode);
@@ -219,16 +253,43 @@ export default function FilesScreen() {
 
   async function handlePickAndUpload() {
     try {
-      const result = await DocumentPicker.getDocumentAsync({ multiple: false, copyToCacheDirectory: true });
+      setError(null);
+
+      const result = await DocumentPicker.getDocumentAsync({
+        multiple: false,
+        copyToCacheDirectory: true,
+      });
+
       if (result.canceled) return;
+
       const picked = result.assets?.[0];
       if (!picked) return;
-      setUploading(true); setUploadProgress(0); setUploadingFileName(decodeName(picked.name));
-      await uploadFile({ uri: picked.uri, name: picked.name, mimeType: picked.mimeType }, currentParentId, (p) => setUploadProgress(p));
+
+      setUploading(true);
+      setUploadProgress(0);
+      setUploadingFileName(decodeName(picked.name));
+
+      await uploadFile(
+        {
+          uri: picked.uri,
+          name: picked.name,
+          mimeType: picked.mimeType,
+        },
+        currentParentId,
+        (p) => setUploadProgress(p)
+      );
+
       await loadFolder(currentParentId);
       Alert.alert("Succès", "Fichier uploadé avec succès.");
-    } catch (e: any) { Alert.alert("Erreur", e?.response?.data?.error || e?.response?.data?.message || "Upload impossible."); }
-    finally { setUploading(false); setUploadProgress(0); setUploadingFileName(""); }
+    } catch (e: any) {
+      const message = getUploadErrorMessage(e);
+      setError(message);
+      Alert.alert("Erreur", message);
+    } finally {
+      setUploading(false);
+      setUploadProgress(0);
+      setUploadingFileName("");
+    }
   }
 
   async function handleCreateFolder() {

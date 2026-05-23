@@ -288,7 +288,17 @@ async function uploadSingleFile(file: File) {
     });
 
     if (!res.ok) {
-      setError(data?.error || "Upload impossible.");
+      if (data?.error === "STORAGE_QUOTA_EXCEEDED") {
+        setError("Quota de stockage dépassé. Supprime des fichiers ou vide la corbeille avant d’uploader.");
+        return;
+      }
+
+      if (data?.error === "FILE_TOO_LARGE") {
+        setError(`Fichier trop volumineux. Taille maximale autorisée : ${data?.maxMb || 50} Mo.`);
+        return;
+      }
+
+      setError(data?.message || data?.error || "Upload impossible.");
       return;
     }
 
@@ -845,7 +855,6 @@ async function uploadSingleFile(file: File) {
                     if (item.isShared) return;
                     if (draggedItem?.isShared) return;
                     if (!draggedItem || item.type !== "folder") return;
-                     if (item.isShared) return;
                     if (draggedItem.id === item.id) return;
 
                     const { res, data } = await moveItem(draggedItem.id, item.id);

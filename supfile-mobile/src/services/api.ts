@@ -2,7 +2,16 @@ import axios from "axios";
 import { getAccessToken, getRefreshToken, setTokens, clearTokens } from "./secureStore";
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL;
+<<<<<<< Updated upstream
 if (!API_URL) throw new Error("EXPO_PUBLIC_API_URL is not defined in .env");
+=======
+
+if (!API_URL) {
+  throw new Error(
+    "EXPO_PUBLIC_API_URL est manquante. Vérifie le fichier .env du projet mobile."
+  );
+}
+>>>>>>> Stashed changes
 
 export const api = axios.create({
   baseURL: API_URL,
@@ -15,7 +24,11 @@ export const api = axios.create({
 // ─── Request interceptor ─────────────────────────────────────────────────────
 api.interceptors.request.use(async (config) => {
   const token = await getAccessToken();
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+
   return config;
 });
 

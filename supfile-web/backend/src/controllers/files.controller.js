@@ -7,6 +7,9 @@ const archiver = require("archiver");
 const FileItem = require("../models/FileItem");
 const ShareItem = require("../models/ShareItem");
 
+const DEFAULT_QUOTA_GB = 30;
+const BYTES_IN_GB = 1024 * 1024 * 1024;
+
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
 }
@@ -16,6 +19,30 @@ function getStorageBaseDir() {
 }
 function getAbsolutePathFromStorageRelPath(storageRelPath) {
   return path.join(getStorageBaseDir(), ...storageRelPath.split("/"));
+}
+function getUserQuotaBytes() {
+  const quotaGb = Number(process.env.USER_QUOTA_GB || DEFAULT_QUOTA_GB);
+  return quotaGb * BYTES_IN_GB;
+}
+
+async function getUserUsedStorageBytes(userId) {
+  const result = await FileItem.aggregate([
+    {
+      $match: {
+        ownerId: userId,
+        type: "file",
+        deletedAt: null,
+      },
+    },
+    {
+      $group: {
+        _id: null,
+        total: { $sum: "$size" },
+      },
+    },
+  ]);
+
+  return result[0]?.total || 0;
 }
 async function getInternalShareForNode(userId, nodeId) {
   return ShareItem.findOne({
@@ -114,11 +141,31 @@ exports.upload = async (req, res) => {
 
     const maxMb = Number(process.env.MAX_UPLOAD_MB || 50);
     const maxBytes = maxMb * 1024 * 1024;
+
     if (req.file.size > maxBytes) {
-      return res.status(413).json({ error: "FILE_TOO_LARGE", maxMb });
+      return res.status(413).json({
+        error: "FILE_TOO_LARGE",
+        message: `Le fichier dépasse la limite autorisée de ${maxMb} Mo.`,
+        maxMb,
+      });
     }
 
     const ownerId = req.user._id;
+
+    const quotaBytes = getUserQuotaBytes();
+    const usedBytes = await getUserUsedStorageBytes(ownerId);
+    const incomingBytes = req.file.size || 0;
+
+    if (usedBytes + incomingBytes > quotaBytes) {
+      return res.status(413).json({
+        error: "STORAGE_QUOTA_EXCEEDED",
+        message: "Quota de stockage dépassé.",
+        quotaBytes,
+        usedBytes,
+        incomingBytes,
+      });
+    }
+
     const parentId = req.body.parentId || null;
     if (parentId) {
       const parent = await FileItem.findOne({
