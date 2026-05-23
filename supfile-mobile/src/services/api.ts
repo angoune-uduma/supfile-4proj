@@ -2,9 +2,6 @@ import axios from "axios";
 import { getAccessToken, getRefreshToken, setTokens, clearTokens } from "./secureStore";
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL;
-<<<<<<< Updated upstream
-if (!API_URL) throw new Error("EXPO_PUBLIC_API_URL is not defined in .env");
-=======
 
 if (!API_URL) {
   throw new Error(
