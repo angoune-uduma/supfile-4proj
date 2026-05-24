@@ -14,7 +14,7 @@ SUPFile est une plateforme de stockage et de partage de fichiers dans le cloud, 
 Le dépôt contient l’historique complet du développement avec des commits cohérents et progressifs.
 
 ```txt
-https://github.com/votre-compte/supfile-4proj
+https://github.com/angoune-uduma/supfile-4proj
 ```
 ---
 ## 1. Technologies utilisées
