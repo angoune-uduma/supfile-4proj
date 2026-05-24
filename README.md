@@ -3,6 +3,20 @@
 SUPFile est une plateforme de stockage et de partage de fichiers dans le cloud, développée dans le cadre du projet académique 4PROJ. Elle propose une interface web et une application mobile permettant à chaque utilisateur de gérer son espace personnel de manière simple, sécurisée et intuitive.
 
 ---
+# SUPFile
+
+SUPFile est une plateforme de stockage et de partage de fichiers dans le cloud, développée dans le cadre du projet académique 4PROJ. Elle propose une interface web et une application mobile permettant à chaque utilisateur de gérer son espace personnel de manière simple, sécurisée et intuitive.
+
+---
+
+## Dépôt Git
+
+Le dépôt contient l’historique complet du développement avec des commits cohérents et progressifs.
+
+```txt
+https://github.com/votre-compte/supfile-4proj
+```
+---
 ## 1. Technologies utilisées
 
 ### Backend
